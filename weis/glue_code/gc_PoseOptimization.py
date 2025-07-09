@@ -89,6 +89,9 @@ class PoseOptimizationWEIS(PoseOptimization):
         if control_opt['servo']['pitch_control']['zeta']['flag']:                            
             wt_opt.model.add_design_var('tune_rosco_ivc.zeta_pc', lower=control_opt['servo']['pitch_control']['zeta']['min'], 
                                                            upper=control_opt['servo']['pitch_control']['zeta']['max'])
+        if control_opt['servo']['pitch_control']['ps_angles_pc']['flag']:                            
+            wt_opt.model.add_design_var('tune_rosco_ivc.ps_angles_pc', lower=control_opt['servo']['pitch_control']['ps_angles_pc']['min'], 
+                                                           upper=control_opt['servo']['pitch_control']['ps_angles_pc']['max'])
         if control_opt['servo']['torque_control']['omega']['flag']:
             wt_opt.model.add_design_var('tune_rosco_ivc.omega_vs', lower=control_opt['servo']['torque_control']['omega']['min'], 
                                                             upper=control_opt['servo']['torque_control']['omega']['max'])

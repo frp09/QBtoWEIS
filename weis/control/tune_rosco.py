@@ -160,8 +160,10 @@ class TuneROSCO(ExplicitComponent):
             n_PC = 1
         else:
             n_PC = len(rosco_init_options['U_pc'])
+            n_PS = len(rosco_init_options['ps_angles_pc'])
         self.add_input('zeta_pc',           val=np.zeros(n_PC),                                 desc='Pitch controller damping ratio')
         self.add_input('omega_pc',          val=np.zeros(n_PC),        units='rad/s',           desc='Pitch controller natural frequency')
+        self.add_input('ps_angles_pc',      val=np.zeros(n_PS),        units='rad',             desc='Minimum pitch saturation angle')  #FP
         self.add_input('stability_margin',  val=0.0,                                            desc='Maximum stability margin for robust scheduling')
         self.add_input('omega_pc_max',      val=0.0,                                            desc='Maximum allowable omega margin for robust scheduling')
         self.add_input('twr_freq',          val=0.0,        units='Hz',                         desc='Tower natural frequency')
@@ -188,6 +190,7 @@ class TuneROSCO(ExplicitComponent):
         self.add_output('PC_GS_Kp',         val=np.zeros(rosco_init_options['PC_GS_n']), units='s',   desc='Gain-schedule table: pitch controller kp gains')
         self.add_output('PC_GS_Ki',         val=np.zeros(rosco_init_options['PC_GS_n']),              desc='Gain-schedule table: pitch controller ki gains')
         self.add_output('Fl_Kp',            val=0.0,            desc='Floating feedback gain')
+        self.add_output('PS_BldPitchMin',   val=np.zeros(rosco_init_options['WS_GS_n']),        units='rad',             desc='Minimum pitch saturation angle')  #FP
 
         # self.add_output('VS_Rgn2K',     val=0.0, units='N*m/(rad/s)**2',      desc='Generator torque constant in Region 2 (HSS side), [N-m/(rad/s)^2]')
 
@@ -199,6 +202,7 @@ class TuneROSCO(ExplicitComponent):
         # Add control tuning parameters to dictionary
         rosco_init_options['omega_pc']    = inputs['omega_pc'].tolist()
         rosco_init_options['zeta_pc']     = inputs['zeta_pc'].tolist()
+        rosco_init_options['ps_angles_pc']     = inputs['ps_angles_pc'].tolist()
         rosco_init_options['omega_vs']    = float(inputs['omega_vs'])
         rosco_init_options['zeta_vs']     = float(inputs['zeta_vs'])
         if rosco_init_options['Flp_Mode'] > 0:
@@ -397,6 +401,8 @@ class TuneROSCO(ExplicitComponent):
         # outputs['VS_Rgn2K']     = controller.vs_rgn2K
         outputs['VS_Kp'] = controller.vs_gain_schedule.Kp[0]
         outputs['VS_Ki'] = controller.vs_gain_schedule.Ki[0]
+
+        outputs['PS_BldPitchMin'] = controller.ps_min_bld_pitch  #FP - connected to existing variable
  
 class Cp_Ct_Cq_Tables(ExplicitComponent):
     def initialize(self):
