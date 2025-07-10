@@ -140,14 +140,14 @@ properties:
                                             min:
                                                 type: number
                                                 default: 0.0
-                                                minimum: -0.01
-                                                maximum: 0.02
+                                                minimum: -0.1
+                                                maximum: 0.2
                                                 unit: rad
                                             max:
                                                 type: number
                                                 default: 0.0
-                                                minimum: -0.01
-                                                maximum: 0.02
+                                                minimum: -0.1
+                                                maximum: 0.2
                                                 unit: rad
                                     Kp_float:
                                         type: object

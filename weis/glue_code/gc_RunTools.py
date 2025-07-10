@@ -24,8 +24,10 @@ class Outputs_2_Screen(om.ExplicitComponent):
             n_PC = 1
         else:
             n_PC = len(modeling_options['ROSCO']['U_pc'])
+            n_PS = len(modeling_options['ROSCO']['U_ps'])
         self.add_input('omega_pc',      val=np.zeros(n_PC), units = 'rad/s')
         self.add_input('zeta_pc',       val=np.zeros(n_PC))
+        self.add_input('ps_angles_pc', val=np.zeros(n_PS), units = 'rad')
         self.add_input('Kp_float',      val=0.0, units = 's')
         self.add_input('ptfm_freq',     val=0.0, units = 'rad/s')
         self.add_input('omega_vs',      val=0.0, units='rad/s')

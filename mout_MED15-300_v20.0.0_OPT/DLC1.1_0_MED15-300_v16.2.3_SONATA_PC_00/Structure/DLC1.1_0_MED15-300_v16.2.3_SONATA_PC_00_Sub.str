@@ -1,0 +1,156 @@
+---------------------------------------- file generated with WEIS QBlade API ----------------------------------------
+
+---------------------- QBladeOcean Sub-structure definition file -----------------
+30.0                          WATERDEPTH                - design water depth [m]
+False                         ISFLOATING                - if the structure is fixed the joint coordinates are assigned in a coordinate system with O(0,0,0) at the mudline, for floaters O(0,0,0) is at the MSL and marks the floaters's NP
+1025.0                        WATERDENSITY              -design density, used in flooded member mass calculations
+0                             WAVEKINEVAL_MOR           - 0 - local evaluation, 1 - eval at fixed ref pos, 2 - eval at lagged position
+0                             WAVEKINEVAL_MOR           - 0 - local evaluation, 1 - eval at fixed ref pos, 2 - eval at lagged position
+30.0                          WAVEKINTAU                - time constant for the lagged waveKin position evaluation
+----------------------------------------Potential Flow Opptions----------------------------------------------------------
+False                         STATICBUOYANCY            - static buoyancy, based on the MSL should be used when using morison member buoyancy combined with potential flow diffraction forces
+                              POT_RAD_FILE              - the potential flow radiation file
+                              POT_EXC_FILE              - the potential flow excitation file
+False                         USE_RADIATION             - use radiation forces [bool]
+0.05                          DELTA_FREQ_RAD            - frequency resolution for radiation forces (used during interpolation of IRF)[Hz]
+60.0                          TRUNC_TIME_RAD            - truncation time for radiation forces [s]
+False                         USE_RAD_ADDMASS           - use added mass matrix provided in radiation file
+False                         USE_EXCITATION            - use excitation forces [bool]
+0.05                          DELTA_FREQ_EXC            - frequency resolution for excitation forces [Hz]
+1                             DELTA_DIR_EXC             - direction resolution for excitation forces [deg]
+60.0                          TRUNC_TIME_EXC            - truncation time for excitation forces [s]
+                              POT_DIFF_FILE             - the potential flow diffraction file
+                              POT_SUM_FILE              - the potential flow sum file
+0                             DIFF_EVAL_TYPE            - evaluation type for difference frequency forces: 0-none, 1-explicit, 2-newman, 3-meandrift
+False                         USE_SUM_FREQS             - use sum frequencies [bool]
+
+----------------------------------------Substructure Definition----------------------------------------------------------
+TP_INTERFACE_POS          - for a floater: defined in (x,y,z) [m] from the neutral point, which is located at MSL (0,0,0), for bottom fixed substructures: defined from seabed
+X[m] Y[m] Z[m]
+0.0 0.0 45.0
+
+REF_COG_POS               - cog reference position, at which the mass matrix is evaluated
+X[m] Y[m] Z[m]
+0.0 0.0 0.0
+
+REF_HYDRO_POS             - position of the TP center of mass defined in (x,y,z) [m] from the origin (0,0,0), which is also the neutral point in case of a floating substructure
+X[m] Y[m] Z[m]
+0.0 0.0 0.0
+
+SUB_MASS                  - the floater mass matrix is defined at the REF_COG_POS
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+
+SUB_HYDROADDEDMASS        - the hydrodynamic added mass is defined and applied at the REF_HYDRO_POS 
+K(0,0)[N/m] K(1,1)[N/m] K(2,2)[N/m] K(3,3)[Nm/rad] K(4,4)[Nm/rad] K(4,4)[Nm/rad]
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+
+SUB_HYDROSTIFFNESS        - the hydrodynamic stiffness is defined and applied at the REF_HYDRO_POS
+K(0,0)[N/m] K(1,1)[N/m] K(2,2)[N/m] K(3,3)[Nm/rad] K(4,4)[Nm/rad] K(4,4)[Nm/rad]
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+
+SUB_HYDRODAMPING          - the hydrodynamic damping is defined and applied at the REF_HYDRO_POS
+R(0,0)[Ns/m] R(1,1)[Ns/m] R(2,2)[Ns/m] R(3,3)[Nms/rad] R(4,4)[Nms/rad] R(4,4)[Nms/rad]
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+
+SUB_HYDROQUADDAMPING      - the hydrodynamic quadratic damping is defined and applied at the REF_HYDRO_POS
+R(0,0)[Ns2/m2] R(1,1)[Ns2/m2] R(2,2)[Ns2/m2] R(3,3)[Nms/rd2] R(4,4)[Nms/rd2] R(4,4)[Nms/rd2]
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+
+SUB_HYDROCONSTFORCE       - the constant hydrodynamic buoyancy (and other forces,moments)
+F(0)[N] F(1)[N] F(2)[N] F(3)[Nm] F(4)[Nm] F(5)[Nm]
+0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00
+
+MARINEGROWTH             
+Thickness Density Start (below MSL) End (below MSL)
+0.100 1100.000 320.000 2.000
+
+1.0                           SUB_STIFFTUNER            - stiffness of substructure tuner value
+1.0                           SUB_MASSTUNER             - mass of substructure tuner value
+1.0                           SUB_BUOYANCYTUNER         - buoyancy of substructure tuner value
+
+SUBJOINTS                 - defined either from MSL (if isFLoating) or from seabed using the designDepth variable (if !isFLoating)
+JointID    JointX     JointY     JointZ
+1          0.000000   0.000000   0.000000  
+2          0.000000   0.000000   10.000000 
+3          0.000000   0.000000   20.000000 
+4          0.000000   0.000000   30.000000 
+5          0.000000   0.000000   40.000000 
+6          0.000000   0.000000   45.000000 
+
+SUBELEMENTS
+ElemID     MASS_[kg/m]     Eix_[N.m^2]   EA_[N]   GJ_[N.m^2]   STRPIT_[deg]    KSX_[-] KSY_[-]   RGX_[-]  RGY_[-]  XCM_[-]  YCM_[-]  YCE_[-]  XCS_[-]  YCS_[-]  DIA_[m]  DAMP[-]
+1          1.34859e+04 4.27484e+12 4.27484e+12 3.45793e+11 3.38995e+12 1.37107e+11 0.00000e+00 5.00000e-01 5.00000e-01 3.51602e+00 3.51602e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 1.00000e+01 1.00000e-02
+2          1.25570e+04 3.98342e+12 3.98342e+12 3.21974e+11 3.15885e+12 1.27663e+11 0.00000e+00 5.00000e-01 5.00000e-01 3.51737e+00 3.51737e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 1.00000e+01 1.00000e-02
+3          1.15884e+04 3.67911e+12 3.67911e+12 2.97139e+11 2.91754e+12 1.17816e+11 0.00000e+00 5.00000e-01 5.00000e-01 3.51877e+00 3.51877e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 1.00000e+01 1.00000e-02
+4          1.06196e+04 3.37422e+12 3.37422e+12 2.72298e+11 2.67576e+12 1.07966e+11 0.00000e+00 5.00000e-01 5.00000e-01 3.52018e+00 3.52018e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 1.00000e+01 1.00000e-02
+5          1.00197e+04 3.18519e+12 3.18519e+12 2.56916e+11 2.52585e+12 1.01867e+11 0.00000e+00 5.00000e-01 5.00000e-01 3.52105e+00 3.52105e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 0.00000e+00 1.00000e+01 1.00000e-02
+
+SUBCONSTRAINTS
+ID         JntID      Jnt2ID     TP         Ground     Spring     DoF_tX     DoF_tY     DoF_tZ     DoF_rX     DoF_rY     DoF_rZ
+1          6          0          1          0          0          1          1          1          1          1          1         
+2          1          0          0          1          0          1          1          1          1          1          1         
+
+SUBMEMBERS
+MemID   Jnt1ID  Jnt2ID  ElmID   ElmRot  HyCoID  IsBuoy  MaGrID  FldArea ElmDsc Name (optional)
+1       1       2       1       0       1       1       0       0       1       member_0
+2       2       3       2       0       1       1       0       0       1       member_1
+3       3       4       3       0       1       1       0       0       1       member_2
+4       4       5       4       0       1       1       0       0       1       member_3
+5       5       6       5       0       1       1       0       0       1       member_4
+
+----------------------------------------Strip Theory Coefficients----------------------------------------------------------
+HYDROMEMBERCOEFF
+CoeffID CdN  CaN  CpN  MCFC
+1       1.00 1.00 0.00 1
+
+HYDROJOINTCOEFF
+CoeffID JointID CdA CaA CpA
+1     1     1.6   1.0   0.0  
+2     2     1.6   1.0   0.0  
+3     3     1.6   1.0   0.0  
+4     4     1.6   1.0   0.0  
+5     5     1.6   1.0   0.0  
+6     6     1.6   1.0   0.0  
+
+----------------------------------------Mooring Definition----------------------------------------------------------
+MOORELEMENTS
+MooID MASS_[kg/m] EIy_[N.m^2] EA_[N]      DAMP_[-]    DIA_[m]
+
+MOORMEMBERS
+ID	CONN_1			CONN_2			Len.[m]	MoorID 	HyCoID	IsBuoy	MaGrID	ElmDsc	Name
+
+RGBCOLOR
+R	G	B
+255	200	15
+
+SUB_Sensor_Locations
+SUB_1_0
+SUB_2_0
+SUB_3_0
+SUB_4_0
+SUB_5_1.0
