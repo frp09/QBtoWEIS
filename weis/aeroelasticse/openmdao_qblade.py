@@ -350,7 +350,7 @@ class QBLADELoadCases(ExplicitComponent):
         self.add_output('Ct_out',       val=np.zeros(n_ws),                   desc='rotor aero thrust coefficient')
         self.add_output('Omega_out',    val=np.zeros(n_ws),   units='rpm',    desc='rotation speeds to run')
         self.add_output('pitch_out',    val=np.zeros(n_ws),   units='deg',    desc='pitch angles to run')
-        self.add_output('AEP',          val=0.0,                    units='kW*h',   desc='annual energy production reconstructed from the openfast simulations')
+        self.add_output('AEP',          val=0.0,              units='kW*h',   desc='annual energy production reconstructed from the openfast simulations')
 
 
         # Control outputs
@@ -376,6 +376,7 @@ class QBLADELoadCases(ExplicitComponent):
         # Hub outputs
         self.add_output('hub_Fxyz',             val=np.zeros(3),    	    units='kN',     desc = 'Maximum hub forces in the non rotating frame')
         self.add_output('hub_Mxyz',             val=np.zeros(3),    	    units='kN*m',   desc = 'Maximum hub moments in the non rotating frame')
+        self.add_output('AeroThrust',           val=np.zeros(3),    	    units='kN',     desc = 'Maximum aerodynamic thrust')
 
         # Tower related outputs
         self.add_output('max_TwrBsMyt',         val=0.0,                    units='kN*m',   desc='maximum of tower base bending moment in fore-aft direction')
@@ -2150,6 +2151,13 @@ class QBLADELoadCases(ExplicitComponent):
             outputs['hub_Mxyz'] = np.array([extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['X_s Mom. Shaft Const.'],
                                         extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['Y_s Mom. Shaft Const.'],
                                         extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['Z_s Mom. Shaft Const.']]) # TODO why the scalin if already in kN*1.e3
+            
+            # this needs to be added to "ADDCHANNELS" input
+            try:
+                outputs['AeroThrust'] = max(sum_stats['Aerodynamic Thrust']['max'])
+            except: 
+                outputs['AeroThrust'] = 0
+                print(' WARNING: Could not assign value for "Aerodynamic Thrust". Please MAke sure to add "Aerodynamic Thrust [N]" to "ADDCHANNELS" in "modeling options" file. ')
 
             ## Post process aerodynamic data
             # Angles of attack - max, std, mean
