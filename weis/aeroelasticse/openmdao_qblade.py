@@ -81,6 +81,7 @@ class QBLADELoadCases(ExplicitComponent):
         self.options.declare('modeling_options')
         self.options.declare('opt_options')
         self.options.declare('wt_init')
+        self.options.declare('cache', default=None)
 
     def setup(self):
         # iteration counter used as model name appendix
@@ -426,6 +427,32 @@ class QBLADELoadCases(ExplicitComponent):
         print("############################################################")
         print(f"The WEIS-QBlade component with version number: {__version__} is called")
         print("############################################################")
+        
+        cache = self.options['cache']
+
+        # This block is used to skip the QBlade run if the cache is enabled and the current iteration has been cached
+        # It will load the constraints, DVs and merit figures from the cached sql file and write them to the outputs
+        # This is useful for resuming optimizations that crashed for hardware or other reasons and allows to workaround with wall time limits
+        if cache is not None and self.qb_inumber < len(cache):
+                cached_outputs = cache[self.qb_inumber]
+                print(f"Loading cached result for iteration {self.qb_inumber}")
+                prefix = 'aeroelastic_qblade.'
+                for name in outputs:
+                    full_key = prefix + name
+                    if full_key in cached_outputs:
+                        outputs[name] = cached_outputs[full_key] # overgive all outputs from this component that were previously calculated
+                self.qb_inumber += 1
+                # skip QBlade run for this iteration
+
+                modopt = self.options['modeling_options']
+                sys.stdout.flush() 
+                qb_vt = self.init_QBlade_model()
+
+                if not modopt['QBlade']['from_qblade']:
+                    qb_vt = self.update_QBLADE_model(qb_vt, inputs, discrete_inputs)
+                
+                return  
+        
         modopt = self.options['modeling_options']
         sys.stdout.flush() 
         qb_vt = self.init_QBlade_model()
@@ -571,7 +598,7 @@ class QBLADELoadCases(ExplicitComponent):
         # get the damping as a function of critical damping in case user didn't RAYLEIGHDMP or used USECRITDAMP
         if qb_vt['Blade']['USECRITDAMP'] or qb_vt['Blade']['RAYLEIGHDMP'] == 0:
             if qb_vt['Blade']['RAYLEIGHDMP'] == 0:
-                logger.warning(f"Blade RAYLEIGHDMP was zero. Updated RAYLEIGHDMP to equivalent to {qb_vt['Blade']['CRITDAMP']}% of critical damping")
+                logger.warning(f"Setting Blade RAYLEIGHDMP to equivalent to value to {qb_vt['Blade']['CRITDAMP']}% of critical damping")
             beta =  (qb_vt['Blade']['CRITDAMP']/100) / (np.pi * inputs['flap_freq'])
             qb_vt['Blade']['RAYLEIGHDMP'] = float(beta)
 
@@ -740,7 +767,7 @@ class QBLADELoadCases(ExplicitComponent):
 
         if qb_vt['Tower']['USECRITDAMP'] or qb_vt['Tower']['RAYLEIGHDMP'] == 0:
             if qb_vt['Tower']['RAYLEIGHDMP'] == 0:
-                logger.warning(f"Tower RAYLEIGHDMP was zero. Updated RAYLEIGHDMP to equivalent to {qb_vt['Tower']['CRITDAMP']}% of critical damping")
+                logger.warning(f"Setting Tower RAYLEIGHDMP to equivalent to value to {qb_vt['Tower']['CRITDAMP']}% of critical damping")
             beta =  (qb_vt['Tower']['CRITDAMP']/100) / (np.pi * inputs['twr_freq'])
             qb_vt['Tower']['RAYLEIGHDMP'] = float(beta)
 
@@ -1253,7 +1280,6 @@ class QBLADELoadCases(ExplicitComponent):
     def run_QBLADE(self, inputs, discrete_inputs, qb_vt):
         modopt          = self.options['modeling_options']
         path2qb_dll     = modopt['General']['qblade_configuration']['path2qb_dll']
-        path2qb_libs    = modopt['General']['qblade_configuration']['path2qb_libs']
         self.qb_vt = qb_vt 
         
         dlc_generator = None # Do this to avoid error when no DLCs are generated
@@ -1427,11 +1453,12 @@ class QBLADELoadCases(ExplicitComponent):
                
         qblade                      = qbwrap.QBladeWrapper()
         qblade.QBlade_dll           = os.path.join(weis_dir,path2qb_dll)
-        qblade.QBlade_libs          = os.path.join(weis_dir,path2qb_libs)
         qblade.QBLADE_runDirectory  = self.QBLADE_runDirectory
         qblade.QBLADE_namingOut     = self.QBLADE_namingOut
         qblade.qb_vt                = self.qb_vt
         qblade.qb_inumber           = self.qb_inumber 
+        qblade.cl_devices            = modopt['General']['qblade_configuration']['cl_devices']
+        qblade.cl_group_size        = modopt['General']['qblade_configuration']['cl_group_size']
         qblade.number_of_workers    = modopt['General']['qblade_configuration']['number_of_workers']
         qblade.no_structure         = modopt['QBlade']['Turbine']['NOSTRUCTURE']
         qblade.store_qprs           = modopt['General']['qblade_configuration']['store_qprs']
@@ -1856,6 +1883,8 @@ class QBLADELoadCases(ExplicitComponent):
         failed_sim_ids = self.get_failed_sim_ids()
         if failed_sim_ids:
             outputs['qblade_failed'] = 2
+        else:
+            outputs['qblade_failed'] = 0
         
         if not self.qb_vt['Turbine']['NOSTRUCTURE']:
             if self.options['modeling_options']['flags']['blade']:
@@ -1912,9 +1941,10 @@ class QBLADELoadCases(ExplicitComponent):
         # Get wind distribution probabilities, make sure they are normalized
         pp = PowerProduction(discrete_inputs['turbine_class'])
         ws_prob = pp.prob_WindDist(U, disttype='pdf')
-        print(f'Wind speed probabilities 1: {ws_prob}')
         ws_prob /= ws_prob.sum()
-        print(f'Wind speed probabilities 2: {ws_prob}')
+
+        print("Wind speeds and corresponding probabilities, wind speeds: ", np.unique(U), "probablities: ", np.unique(ws_prob))
+        
         # Scale all DELs and damage by probability and collapse over the various DLCs (inner dot product)
         # Also work around NaNs
         DELs = DELs.fillna(0.0).multiply(ws_prob, axis=0).sum()
