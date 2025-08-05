@@ -6,6 +6,7 @@ from SONATA.classBlade import Blade
 from SONATA.utl.beam_struct_eval import beam_struct_eval
 from scipy.interpolate import interp1d
 import pickle
+import yaml
 from weis.aeroelasticse.openmdao_qblade import QBLADELoadCases
 
 weis_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -187,13 +188,26 @@ class SONATA_WEIS(ExplicitComponent):
 
         #inum = wt_opt['aeroelastic_qblade']['qb_inumber']               #get iteration directory and name - not working, need to access QBLADELoadCases.qb_inumber 
         qbpath = modeling_options['General']['qblade_configuration']['QB_run_dir']
-        #save_dir = os.path.join(qbpath,'iteration_'+str(inum))
-        save_dir = os.path.join(qbpath,'SONATA_dict')
-        os.makedirs(save_dir, exist_ok=True)
-        filename = '/'.join([save_dir, 'SONATA_dict.json'])
+        save_dir_0 = os.path.join(qbpath,'iteration_0')
+        if not os.path.exists(save_dir_0):
+            os.makedirs(save_dir_0)
+        else:
+            c=1
+            while True:
+                save_dir = os.path.join(qbpath,'iteration_'+str(c))
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir)
+                    break
 
-        with open(filename, 'wb') as file:              #write SONATA blade dictionary
+        os.makedirs(save_dir, exist_ok=True)
+        filename = '/'.join([save_dir, 'SONATA_dict.p'])
+
+        with open(filename, 'wb') as file:              #write SONATA blade dictionary in pickle format
             pickle.dump(sonata_blade_dict, file)
+
+        filename = filename.replace('p', 'yaml')
+        with open(filename, 'w') as file:              #write SONATA blade dictionary in json format
+            yaml.dump(sonata_blade_dict, file, sort_keys = False)
 
         job = Blade(name=job_name, weis_dict=sonata_blade_dict, flags=flags_dict, stations=radial_stations)  # initialize job with respective yaml input file
         
