@@ -185,11 +185,12 @@ class SONATA_WEIS(ExplicitComponent):
                     "flag_wf": flag_wf, "flag_lft": flag_lft, "flag_topo": flag_topo, "mesh_resolution": mesh_resolution,
                     "flag_recovery": flag_recovery, "c2_axis": c2_axis}
 
-        inum = QBLADELoadCases.qb_inumber               #get iteration directory and name 
+        #inum = wt_opt['aeroelastic_qblade']['qb_inumber']               #get iteration directory and name - not working, need to access QBLADELoadCases.qb_inumber 
         qbpath = modeling_options['General']['qblade_configuration']['QB_run_dir']
-        save_dir = os.path.join(qbpath,'iteration_'+str(inum))
+        #save_dir = os.path.join(qbpath,'iteration_'+str(inum))
+        save_dir = os.path.join(qbpath,'SONATA_dict')
         os.makedirs(save_dir, exist_ok=True)
-        filename = '/'.join(save_dir, 'SONATA_dict.json')
+        filename = '/'.join([save_dir, 'SONATA_dict.json'])
 
         with open(filename, 'wb') as file:              #write SONATA blade dictionary
             pickle.dump(sonata_blade_dict, file)
