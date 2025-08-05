@@ -5,7 +5,8 @@ from openmdao.api import ExplicitComponent
 from SONATA.classBlade import Blade
 from SONATA.utl.beam_struct_eval import beam_struct_eval
 from scipy.interpolate import interp1d
-
+import pickle
+from weis.aeroelasticse.openmdao_qblade import QBLADELoadCases
 
 weis_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
@@ -183,6 +184,15 @@ class SONATA_WEIS(ExplicitComponent):
                     "flag_plotDisplacement": flag_plotDisplacement, "flag_plotTheta11": flag_plotTheta11,
                     "flag_wf": flag_wf, "flag_lft": flag_lft, "flag_topo": flag_topo, "mesh_resolution": mesh_resolution,
                     "flag_recovery": flag_recovery, "c2_axis": c2_axis}
+
+        inum = QBLADELoadCases.qb_inumber               #get iteration directory and name 
+        qbpath = modeling_options['General']['qblade_configuration']['QB_run_dir']
+        save_dir = os.path.join(qbpath,'iteration_'+str(inum))
+        os.makedirs(save_dir, exist_ok=True)
+        filename = '/'.join(save_dir, 'SONATA_dict.json')
+
+        with open(filename, 'wb') as file:              #write SONATA blade dictionary
+            pickle.dump(sonata_blade_dict, file)
 
         job = Blade(name=job_name, weis_dict=sonata_blade_dict, flags=flags_dict, stations=radial_stations)  # initialize job with respective yaml input file
         
