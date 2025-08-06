@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d
 import pickle
 import yaml
 from weis.aeroelasticse.openmdao_qblade import QBLADELoadCases
+import wisdem.inputs.validation as IO
 
 weis_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
@@ -198,16 +199,17 @@ class SONATA_WEIS(ExplicitComponent):
                 if not os.path.exists(save_dir):
                     os.makedirs(save_dir)
                     break
-
-        os.makedirs(save_dir, exist_ok=True)
-        filename = '/'.join([save_dir, 'SONATA_dict.p'])
-
+                c += 1
+        
+        filename = '/'.join([save_dir, 'SONATAWEISBlade.p'])
         with open(filename, 'wb') as file:              #write SONATA blade dictionary in pickle format
             pickle.dump(sonata_blade_dict, file)
 
-        filename = filename.replace('p', 'yaml')
-        with open(filename, 'w') as file:              #write SONATA blade dictionary in json format
-            yaml.dump(sonata_blade_dict, file, sort_keys = False)
+        filename = filename.replace('p', 'yaml')        #write SONATA blade dictionary in yaml format
+        IO.write_yaml(sonata_blade_dict, filename)
+
+        #with open(filename, 'w') as file:              #write SONATA blade dictionary in json format
+        #    yaml.dump(sonata_blade_dict, file, sort_keys = True)     
 
         job = Blade(name=job_name, weis_dict=sonata_blade_dict, flags=flags_dict, stations=radial_stations)  # initialize job with respective yaml input file
         
