@@ -189,9 +189,9 @@ class SONATA_WEIS(ExplicitComponent):
 
         #inum = wt_opt['aeroelastic_qblade']['qb_inumber']               #get iteration directory and name - not working, need to access QBLADELoadCases.qb_inumber 
         qbpath = modeling_options['General']['qblade_configuration']['QB_run_dir']
-        save_dir_0 = os.path.join(qbpath,'iteration_0')
-        if not os.path.exists(save_dir_0):
-            os.makedirs(save_dir_0)
+        save_dir = os.path.join(qbpath,'iteration_0')
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
         else:
             c=1
             while True:
