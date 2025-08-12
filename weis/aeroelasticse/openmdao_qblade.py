@@ -2097,10 +2097,10 @@ class QBLADELoadCases(ExplicitComponent):
             
             # this needs to be added to "ADDCHANNELS" input
         try:
-            outputs['AeroThrust'] = max(sum_stats['Aerodynamic Thrust']['max'])
+            outputs['AeroThrust'] = np.max(sum_stats['Aerodynamic Thrust']['max'])
         except: 
             outputs['AeroThrust'] = 0
-            print(' WARNING: Could not assign value for "Aerodynamic Thrust". Please Make sure to add "Aerodynamic Thrust [N]" to "ADDCHANNELS" in "modeling options" file. ')
+            print('[WARNING] : Could not assign value for "Aerodynamic Thrust". Please Make sure to add "Aerodynamic Thrust [N]" to "ADDCHANNELS" in "modeling options" file. ')
 
         return outputs
           	
