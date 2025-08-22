@@ -378,6 +378,7 @@ class QBLADELoadCases(ExplicitComponent):
         self.add_output('hub_Fxyz',             val=np.zeros(3),    	    units='kN',     desc = 'Maximum hub forces in the non rotating frame')
         self.add_output('hub_Mxyz',             val=np.zeros(3),    	    units='kN*m',   desc = 'Maximum hub moments in the non rotating frame')
         self.add_output('AeroThrust',           val=0.0,    	            units='kN',     desc = 'Maximum aerodynamic thrust')
+        self.add_output('max_AeroThrust_ratio', val=0.0,    	                            desc = 'ratio of maximum aerodynamic thrust to maximum allowable aerodynamic thrust')
 
         # Tower related outputs
         self.add_output('max_TwrBsMyt',         val=0.0,                    units='kN*m',   desc='maximum of tower base bending moment in fore-aft direction')
@@ -2098,8 +2099,10 @@ class QBLADELoadCases(ExplicitComponent):
             # this needs to be added to "ADDCHANNELS" input
         try:
             outputs['AeroThrust'] = np.max(sum_stats['Aerodynamic Thrust']['max'])
+            outputs['max_AeroThrust_ratio'] = outputs['AeroThrust']/self.options['opt_options']['constraints']['user']['aeroelastic_qblade.AeroThrust']['upper_bound']
         except: 
             outputs['AeroThrust'] = 0
+            outputs['max_AeroThrust_ratio'] = 0
             print('[WARNING] : Could not assign value for "Aerodynamic Thrust". Please Make sure to add "Aerodynamic Thrust [N]" to "ADDCHANNELS" in "modeling options" file. ')
 
         return outputs
