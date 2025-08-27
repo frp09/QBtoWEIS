@@ -370,6 +370,8 @@ class QBLADELoadCases(ExplicitComponent):
         self.add_output('max_RootMyc',          val=0.0,                    units='kN*m',   desc='Maximum of the signals RootMyb1, RootMyb2, ... across all n blades representing the maximum blade root out of plane moment')
         self.add_output('max_RootMzb',          val=0.0,                    units='kN*m',   desc='Maximum of the signals RootMzb1, RootMzb2, ... across all n blades representing the maximum blade root torsional moment')
         self.add_output('DEL_RootMyb',          val=0.0,                    units='kN*m',   desc='damage equivalent load of blade root flap bending moment in out-of-plane direction')
+        self.add_output('DEL_RootMxb',          val=0.0,                    units='kN*m',   desc='damage equivalent load of blade root edge bending moment in out-of-plane direction')
+        self.add_output('DEL_RootMzb',          val=0.0,                    units='kN*m',   desc='damage equivalent load of blade root tors bending moment in out-of-plane direction')
         self.add_output('max_aoa',              val=np.zeros(n_span),       units='deg',    desc='maxima of the angles of attack distributed along blade span')
         self.add_output('std_aoa',              val=np.zeros(n_span),       units='deg',    desc='standard deviation of the angles of attack distributed along blade span')
         self.add_output('mean_aoa',             val=np.zeros(n_span),       units='deg',    desc='mean of the angles of attack distributed along blade span')
