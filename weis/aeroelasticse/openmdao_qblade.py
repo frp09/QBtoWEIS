@@ -1644,10 +1644,14 @@ class QBLADELoadCases(ExplicitComponent):
                 channels_out += [f'Z_b Rot.Def. BLD_1 pos {bld_station[0]:.3f} [deg]']
                 channels_out += [f'X_c Aero. Force BLD_1 pos {bld_station[0]:.3f} [N/m]']
                 channels_out += [f'Y_c Aero. Force BLD_1 pos {bld_station[0]:.3f} [N/m]']
+                #channels_out += [f'Axial Induction BLD_1 pos {bld_station[0]:.3f} [-]']
+                #channels_out += [f'Lift Coefficient BLD_1 pos {bld_station[0]:.3f} [-]']
+                #channels_out += [f'Drag Coefficient BLD_1 pos {bld_station[0]:.3f} [-]']
                 channels_out += [f'Z_l For. BLD_2 pos {bld_station[1]:.3f} [N]']
                 channels_out += [f'X_l Mom. BLD_2 pos {bld_station[1]:.3f} [Nm]']
                 channels_out += [f'Y_l Mom. BLD_2 pos {bld_station[1]:.3f} [Nm]']
                 channels_out += [f'Angle of Attack BLD_2 pos {bld_station[1]:.3f} [deg]']
+
                 
                 if self.n_blades == 3:
                     channels_out += [f'Z_l For. BLD_3 pos {bld_station[2]:.3f} [N]']
@@ -2105,7 +2109,7 @@ class QBLADELoadCases(ExplicitComponent):
             outputs['max_AeroThrust_ratio'] = 0
             print('[WARNING] : Could not assign value for "Aerodynamic Thrust". Please Make sure to add "Aerodynamic Thrust [N]" to "ADDCHANNELS" in "modeling options" file. ')
             print('[ERROR] ', str(e))
-            
+
         return outputs
           	
     def get_blade_loading(self, sum_stats, extreme_table, inputs, outputs):
