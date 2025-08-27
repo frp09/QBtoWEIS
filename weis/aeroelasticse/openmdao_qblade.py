@@ -1957,7 +1957,10 @@ class QBLADELoadCases(ExplicitComponent):
         
         # Standard DELs for blade root and tower base
         outputs['DEL_RootMyb'] = np.max([DELs[f'Y_b RootBend. Mom. BLD_{k+1}'] for k in range(self.n_blades)])
-        outputs['DEL_TwrBsMyt'] = DELs['TwrBsM']
+        outputs['DEL_RootMxb'] = np.max([DELs[f'X_b RootBend. Mom. BLD_{k+1}'] for k in range(self.n_blades)])
+        outputs['DEL_RootMzb'] = np.max([DELs[f'Z_b RootBend. Mom. BLD_{k+1}'] for k in range(self.n_blades)])
+        # TO DO: add tower base directional DELs
+        outputs['DEL_TwrBsMyt'] = DELs['TwrBsM']   # FP: is this correct? 
         outputs['DEL_TwrBsMyt_ratio'] = DELs['TwrBsM']/self.options['opt_options']['constraints']['control']['DEL_TwrBsMyt']['max']
             
         # Compute total fatigue damage in spar caps at blade root and trailing edge at max chord location
