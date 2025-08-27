@@ -183,6 +183,8 @@ class BaseMethod:
         self.constraints.append(
             {"name": constraint_name, "equals": equals, "lower": lower, "upper": upper,}
         )
+        # for debugging 
+        print("name: ", constraint_name, ", equals: ", equals, ", lower: ", lower, ", upper: ", upper)
 
     def process_constraints(self):
         """

@@ -132,6 +132,23 @@ properties:
                                                 minimum: 0.0
                                                 maximum: 10.0
                                                 unit: rad/s
+                                    ps_angles_pc: &control_ps_min
+                                        type: object
+                                        default: {}
+                                        properties:
+                                            flag: *flag
+                                            min:
+                                                type: number
+                                                default: 0.0
+                                                minimum: -0.1
+                                                maximum: 0.2
+                                                unit: rad
+                                            max:
+                                                type: number
+                                                default: 0.0
+                                                minimum: -0.1
+                                                maximum: 0.2
+                                                unit: rad
                                     Kp_float:
                                         type: object
                                         default: {}

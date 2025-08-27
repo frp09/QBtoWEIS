@@ -5,6 +5,7 @@ def assign_ROSCO_values(wt_opt, modeling_options, opt_options):
     # Pitch regulation
     wt_opt['tune_rosco_ivc.omega_pc']      = rosco_init_options['omega_pc']
     wt_opt['tune_rosco_ivc.zeta_pc']       = rosco_init_options['zeta_pc']
+    wt_opt['tune_rosco_ivc.ps_angles_pc']  = rosco_init_options['ps_angles_pc']
     # if not (len(rosco_init_options['omega_pc']) == \
     #     len(rosco_init_options['zeta_pc']) == \
     #     len(rosco_init_options['U_pc'])):

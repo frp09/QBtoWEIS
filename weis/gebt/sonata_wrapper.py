@@ -5,7 +5,10 @@ from openmdao.api import ExplicitComponent
 from SONATA.classBlade import Blade
 from SONATA.utl.beam_struct_eval import beam_struct_eval
 from scipy.interpolate import interp1d
-
+import pickle
+import yaml
+from weis.aeroelasticse.openmdao_qblade import QBLADELoadCases
+import wisdem.inputs.validation as IO
 
 weis_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
@@ -183,6 +186,30 @@ class SONATA_WEIS(ExplicitComponent):
                     "flag_plotDisplacement": flag_plotDisplacement, "flag_plotTheta11": flag_plotTheta11,
                     "flag_wf": flag_wf, "flag_lft": flag_lft, "flag_topo": flag_topo, "mesh_resolution": mesh_resolution,
                     "flag_recovery": flag_recovery, "c2_axis": c2_axis}
+
+        #inum = wt_opt['aeroelastic_qblade']['qb_inumber']               #get iteration directory and name - not working, need to access QBLADELoadCases.qb_inumber 
+        qbpath = modeling_options['General']['qblade_configuration']['QB_run_dir']
+        save_dir = os.path.join(qbpath,'iteration_0')
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        else:
+            c=1
+            while True:
+                save_dir = os.path.join(qbpath,'iteration_'+str(c))
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir)
+                    break
+                c += 1
+        
+        filename = '/'.join([save_dir, 'SONATAWEISBlade.p'])
+        with open(filename, 'wb') as file:              #write SONATA blade dictionary in pickle format
+            pickle.dump(sonata_blade_dict, file)
+
+        filename = filename.replace('p', 'yaml')        #write SONATA blade dictionary in yaml format
+        IO.write_yaml(sonata_blade_dict, filename)
+
+        #with open(filename, 'w') as file:              #write SONATA blade dictionary in json format
+        #    yaml.dump(sonata_blade_dict, file, sort_keys = True)     
 
         job = Blade(name=job_name, weis_dict=sonata_blade_dict, flags=flags_dict, stations=radial_stations)  # initialize job with respective yaml input file
         
