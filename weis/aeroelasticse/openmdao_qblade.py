@@ -609,7 +609,7 @@ class QBLADELoadCases(ExplicitComponent):
         ## Blade structural definition inputs    
 
         # get the damping as a function of critical damping in case user didn't RAYLEIGHDMP or used USECRITDAMP
-        if qb_vt['Blade']['USECRITDAMP'] or qb_vt['Blade']['RAYLEIGHDMP'] == 0:
+        if not qb_vt['Blade']['USERAYLEIGHDMP_ANISO'] and (qb_vt['Blade']['USECRITDAMP'] or qb_vt['Blade']['RAYLEIGHDMP'] == 0):
             if qb_vt['Blade']['RAYLEIGHDMP'] == 0:
                 logger.warning(f"Setting Blade RAYLEIGHDMP to equivalent to value to {qb_vt['Blade']['CRITDAMP']}% of critical damping")
             beta =  (qb_vt['Blade']['CRITDAMP']/100) / (np.pi * inputs['flap_freq'])
@@ -2277,7 +2277,7 @@ class QBLADELoadCases(ExplicitComponent):
         # We use OF channel naming convention from here on out to be able to use the standard constraint convetnions
         outputs["max_TwrBsMyt"] = np.max(sum_stats[fatb_max_chan]['max'])
         outputs["max_XtbMom"] = np.max(sum_stats["X_tb Mom. TWR Bot. Constr."]['max'])
-        outputs["max_YtbMom"] = np.max(sum_stats["Y_tb Mom. Twr Bot. Constr."]['max'])
+        outputs["max_YtbMom"] = np.max(sum_stats["Y_tb Mom. TWR Bot. Constr."]['max'])
         outputs["max_ZtbMom"] = np.max(sum_stats["Z_tb Mom. TWR Bot. Constr."]['max'])
         outputs["max_TwrBsMyt_ratio"] = np.max(sum_stats[fatb_max_chan]['max'])/self.options['opt_options']['constraints']['control']['Max_TwrBsMyt']['max']
         # Return forces and moments along tower height at instance of largest fore-aft tower base moment
