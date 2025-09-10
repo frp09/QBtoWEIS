@@ -106,9 +106,9 @@ class PoseOptimizationWEIS(PoseOptimization):
 
             ist = control_opt['servo']['pitch_control']['ps_angles_pc']['index_start']
             ien = control_opt['servo']['pitch_control']['ps_angles_pc']['index_end']
-            indices_pc = range(ist, ien)                          
+            indices_pc = range(ist, ien)  
             wt_opt.model.add_design_var('tune_rosco_ivc.ps_angles_pc', indices = indices_pc, lower=self.ps_pc[list(indices_pc)] - control_opt['servo']['pitch_control']['ps_angles_pc']['max_decrease'], 
-                                                           upper=self.ps_pc[list(indices_pc)] - control_opt['servo']['pitch_control']['ps_angles_pc']['max_increase'])
+                                                           upper=self.ps_pc[list(indices_pc)] + control_opt['servo']['pitch_control']['ps_angles_pc']['max_increase'])
         if control_opt['servo']['torque_control']['omega']['flag']:
             wt_opt.model.add_design_var('tune_rosco_ivc.omega_vs', lower=control_opt['servo']['torque_control']['omega']['min'], 
                                                             upper=control_opt['servo']['torque_control']['omega']['max'])
