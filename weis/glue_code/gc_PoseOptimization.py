@@ -35,6 +35,9 @@ class PoseOptimizationWEIS(PoseOptimization):
             self.n_OF_runs = modeling_options['OpenFAST_Linear']['linearization']['NLinTimes']
         else:
             self.n_OF_runs = 0
+
+        if analysis_options['design_variables']['control']['servo']['pitch_control']['ps_angles_pc']['flag']:
+            self.ps_pc = np.array(modeling_options['ROSCO']['ps_angles_pc'])
     
     def set_objective(self, wt_opt):
         # Set merit figure. Each objective has its own scaling.  Check first for user override
@@ -90,9 +93,22 @@ class PoseOptimizationWEIS(PoseOptimization):
         if control_opt['servo']['pitch_control']['zeta']['flag']:                            
             wt_opt.model.add_design_var('tune_rosco_ivc.zeta_pc', lower=control_opt['servo']['pitch_control']['zeta']['min'], 
                                                            upper=control_opt['servo']['pitch_control']['zeta']['max'])
-        if control_opt['servo']['pitch_control']['ps_angles_pc']['flag']:                            
-            wt_opt.model.add_design_var('tune_rosco_ivc.ps_angles_pc', lower=control_opt['servo']['pitch_control']['ps_angles_pc']['min'], 
-                                                           upper=control_opt['servo']['pitch_control']['ps_angles_pc']['max'])
+        if control_opt['servo']['pitch_control']['ps_angles_pc']['flag']:  
+            
+            # check that design variable is correctly defined
+            if control_opt['servo']['pitch_control']['ps_angles_pc']['index_end'] > len(self.ps_pc):
+                raise Exception(
+                    "Check the analysis options yaml, index_end of the blade chord is higher than the number of DVs n_opt"
+                )
+            elif control_opt['servo']['pitch_control']['ps_angles_pc']['index_end'] == 0:
+                #control_opt['servo']['pitch_control']['ps_angles_pc']['index_end'] = control_opt['servo']['pitch_control']['ps_angles_pc']['index_end']["n_opt"]
+                control_opt['servo']['pitch_control']['ps_angles_pc']['index_end'] = len(self.ps_pc)
+
+            ist = control_opt['servo']['pitch_control']['ps_angles_pc']['index_start']
+            ien = control_opt['servo']['pitch_control']['ps_angles_pc']['index_end']
+            indices_pc = range(ist, ien)                          
+            wt_opt.model.add_design_var('tune_rosco_ivc.ps_angles_pc', indices = indices_pc, lower=self.ps_pc[list(indices_pc)] - control_opt['servo']['pitch_control']['ps_angles_pc']['max_decrease'], 
+                                                           upper=self.ps_pc[list(indices_pc)] - control_opt['servo']['pitch_control']['ps_angles_pc']['max_increase'])
         if control_opt['servo']['torque_control']['omega']['flag']:
             wt_opt.model.add_design_var('tune_rosco_ivc.omega_vs', lower=control_opt['servo']['torque_control']['omega']['min'], 
                                                             upper=control_opt['servo']['torque_control']['omega']['max'])

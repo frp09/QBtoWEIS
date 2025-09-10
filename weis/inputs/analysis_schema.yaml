@@ -137,18 +137,30 @@ properties:
                                         default: {}
                                         properties:
                                             flag: *flag
-                                            min:
+                                            max_decrease:
                                                 type: number
                                                 default: 0.0
-                                                minimum: -0.1
+                                                minimum: 0.0
                                                 maximum: 0.2
                                                 unit: rad
-                                            max:
+                                            max_increase:
                                                 type: number
                                                 default: 0.0
-                                                minimum: -0.1
+                                                minimum: 0.0
                                                 maximum: 0.2
                                                 unit: rad
+                                            index_start:
+                                                type: number
+                                                default: 0.0
+                                                minimum: 0.0
+                                                maximum: 100
+                                                unit: none 
+                                            index_end:
+                                                type: number
+                                                default: 0.0
+                                                minimum: 0.0
+                                                maximum: 100
+                                                unit: none                                            
                                     Kp_float:
                                         type: object
                                         default: {}
