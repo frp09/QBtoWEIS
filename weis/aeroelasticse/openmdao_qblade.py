@@ -812,6 +812,7 @@ class QBLADELoadCases(ExplicitComponent):
             
             qb_vt['QBladeOcean']['WATERDEPTH'] = float(inputs['water_depth'])
             qb_vt['QBladeOcean']['WATERDENSITY'] = float(inputs['rho_water'])
+            qb_vt['QBladeOcean']['ADVANCEDBUOYANCY'] = int(qb_vt['QBladeOcean']['ADVANCEDBUOYANCY'])
             
             if not qb_vt['QBladeOcean']['override_wave']:
                 qb_vt['QBladeOcean']['SIGHEIGHT'] = float(inputs['Hsig_wave'])
@@ -1960,7 +1961,7 @@ class QBLADELoadCases(ExplicitComponent):
         # Get wind distribution probabilities, make sure they are normalized
         pp = PowerProduction(discrete_inputs['turbine_class'])
         ws_prob = pp.prob_WindDist(U, disttype='pdf')
-        print("Wind speeds and corresponding probabilities, wind speeds: ", np.unique(U), "probablities: ", np.unique(ws_prob))
+        # print("Wind speeds and corresponding probabilities, wind speeds: ", np.unique(U), "probablities: ", np.unique(ws_prob))
         ws_prob /= ws_prob.sum()
         
         
