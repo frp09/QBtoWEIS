@@ -7,7 +7,7 @@ from rosco import discon_lib_path
 import weis.inputs as sch
 from openfast_io.FAST_reader import InputReader_OpenFAST
 from wisdem.glue_code.gc_LoadInputs import WindTurbineOntologyPython
-from weis.dlc_driver.dlc_generator    import DLCGenerator
+from weis.dlc_driver.dlc_generator    import DLCGenerator, get_dlc_label_for_aep
 from openmdao.utils.mpi import MPI
 from rosco.toolbox.inputs.validation import load_rosco_yaml
 from wisdem.inputs import load_yaml
@@ -287,13 +287,12 @@ class WindTurbineOntologyPythonWEIS(WindTurbineOntologyPython):
             dlc_generator.generate(DLCopt['DLC'], DLCopt)
         self.modeling_options['DLC_driver']['n_cases'] = dlc_generator.n_cases
         
-        # Determine wind speeds that will be used to calculate AEP (using DLC AEP or 1.1)
+        # Determine wind speeds that will be used to calculate AEP.
+        # Prefer the dedicated AEP DLC, but allow operating DLC fallbacks when
+        # users intentionally estimate AEP from those cases.
         DLCs = [i_dlc['DLC'] for i_dlc in self.modeling_options['DLC_driver']['DLCs']]
-        if 'AEP' in DLCs:
-            DLC_label_for_AEP = 'AEP'
-        else:
-            DLC_label_for_AEP = '1.1'
-        dlc_aep_ws = [c.URef for c in dlc_generator.cases if c.label == DLC_label_for_AEP]
+        DLC_label_for_AEP = get_dlc_label_for_aep(DLCs)
+        dlc_aep_ws = [c.URef for c in dlc_generator.cases if c.label == DLC_label_for_AEP] if DLC_label_for_AEP else []
         self.modeling_options['DLC_driver']['n_ws_aep'] = len(np.unique(dlc_aep_ws))
 
         # TMD modeling
