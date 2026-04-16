@@ -2034,7 +2034,16 @@ class QBLADELoadCases(ExplicitComponent):
         DLCs = [i_dlc['DLC'] for i_dlc in modopts['DLC_driver']['DLCs']]
         if 'AEP' in DLCs:
             DLC_label_for_AEP = 'AEP'
-        else:
+        elif '1.1' in DLCs:
+            DLC_label_for_AEP = '1.1'
+            logger.warning('WARNING: DLC 1.1 is being used for AEP calculations.  Use the AEP DLC for more accurate wind modeling with constant TI.')
+        elif '1.3' in DLCs:
+            DLC_label_for_AEP = '1.3'
+            logger.warning('WARNING: DLC 1.3 is being used for AEP calculations.  Use the AEP DLC for more accurate wind modeling with constant TI.')
+        elif '1.6' in DLCs:
+            DLC_label_for_AEP = '1.6'
+            logger.warning('WARNING: DLC 1.6 is being used for AEP calculations.  Use the AEP DLC for more accurate wind modeling with constant TI.')
+        else: 
             DLC_label_for_AEP = '1.1'
             logger.warning('WARNING: DLC 1.1 is being used for AEP calculations.  Use the AEP DLC for more accurate wind modeling with constant TI.')
 
