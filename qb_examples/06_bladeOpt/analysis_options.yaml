@@ -1,0 +1,87 @@
+general:
+    folder_output: output_v31.1.2
+    fname_output: MED15-308_v31.1.2
+
+design_variables:
+  blade:
+      aero_shape:
+          twist:
+              flag: False             # Flag to optimize the twist
+              inverse: False         # Flag to determine twist from the user-defined desired margin to stall (defined in constraints)
+              n_opt: 8               # Number of control points along blade span
+              max_decrease: 0.0800   # Maximum decrease for the twist in [rad] at the n_opt locations
+              max_increase: 0.0800   # Maximum increase for the twist in [rad] at the n_opt locations
+              index_start: 2         # Lock the first two DVs from blade root
+              index_end: 8           # All DVs close to blade tip are active
+          chord:
+              flag: False             # Flag to optimize the chord
+              n_opt: 12              # Number of control points along blade span
+              max_decrease: 0.8      # Minimum multiplicative gain on existing chord at the n_opt locations
+              max_increase: 1.2      # Maximum multiplicative gain on existing chord at the n_opt locations
+              index_start: 2         # Lock the first two DVs from blade root
+              index_end: 11          # All DVs close to blade tip are active
+      # structure:
+          # - layer_name: Spar_Cap_SS
+            # #flag: True              # Flag to optimize the spar cap thickness on the suction side
+            # n_opt: 8                 # Number of control points along blade span
+            # max_decrease: 0.65       # Maximum nondimensional decrease at the n_opt locations
+            # max_increase: 1.35       # Maximum nondimensional increase at the n_opt locations
+            # index_start: 1           # Lock the first DV from blade root
+            # index_end: 7             # The last DV at blade tip is locked
+          # - layer_name: Spar_Cap_PS
+            # #flag: True              # Flag to optimize the spar cap thickness on the pressure side
+            # equal_to_suction: true   # Flag to impose the spar cap thickness on pressure and suction sides equal
+            # n_opt: 8                 # Number of control points along blade span
+            # max_decrease: 0.65       # Maximum nondimensional decrease at the n_opt locations
+            # max_increase: 1.35       # Maximum nondimensional increase at the n_opt locations
+            # index_start: 1           # Lock the first DV from blade root
+            # index_end: 7             # The last DV at blade tip is locked
+  control:
+    tsr:
+      flag: False
+      minimum: 8
+      maximum: 12
+    servo:
+      pitch_control:
+         ps_angles_pc:
+           flag: True
+           max_decrease: 0.0800   # Maximum decrease for pitch in [rad] at the n_opt locations
+           max_increase: 0.0800   # Maximum increase for pitch in [rad] at the n_opt locations
+           index_start: 0
+           index_end: 3
+
+merit_figure_user:
+  name: aeroelastic_qblade.AEP   # or 'AEP', 'LCOE', etc.
+  max_flag: true
+
+constraints:
+    # blade:
+        # strains_spar_cap_ss:
+            # flag: True                  # Flag to impose constraints on maximum strains (absolute value) in the spar cap on the blade suction side
+            # max:    4000.e-6            # Value of maximum strains [-]
+            # index_start: 1              # Do not enforce constraint at the first station from blade root of the n_opt from spar_cap_ss
+            # index_end: 7                # Do not enforce constraint at the last station at blade tip of the n_opt from spar_cap_ss
+        # strains_spar_cap_ps:        
+            # flag: True                  # Flag to impose constraints on maximum strains (absolute value) in the spar cap on the blade pressure side
+            # max:    4000.e-6            # Value of maximum strains [-]
+            # index_start: 1              # Do not enforce constraint at the first station from blade root of the n_opt from spar_cap_ps
+            # index_end: 7                # Do not enforce constraint at the last station at blade tip of the n_opt from spar_cap_ps
+        # tip_deflection:        
+            # flag: true        
+            # margin: 1.4175        
+            
+    user:
+      - name: aeroelastic_qblade.AeroThrust
+        upper_bound: [2550] # (kN)
+
+        
+driver:        
+    optimization:        
+        flag: True                      # Flag to enable optimization
+        tol: 1.e-3                      # Optimality tolerance
+        max_iter: 400                   # Maximum number of iterations (SLSQP)
+        solver: LN_COBYLA               # Optimization solver. Other options are 'SLSQP' - 'CONMIN'
+        
+recorder:        
+    flag: true                          # Flag to activate OpenMDAO recorder
+    file_name: log_opt.sql              # Name of OpenMDAO recorder

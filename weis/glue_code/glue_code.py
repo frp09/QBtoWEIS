@@ -336,13 +336,13 @@ class WindPark(om.Group):
 
                     if modeling_options['floating']['members']['outer_shape'][k] == "circular":
                         self.connect(f"floatingse.member{k}.outer_diameter", f"raft.member{k}:outer_diameter")
-                        self.connect(f"floating.memgrid{idx}.ca_usr_grid", f"raft.member{k}:Ca")
-                        self.connect(f"floating.memgrid{idx}.cd_usr_grid", f"raft.member{k}:Cd")
+                        self.connect(f"floating.memgrid{idx}.ca_usr_grid", f"raft.member{k}:Ca", src_indices=[0])
+                        self.connect(f"floating.memgrid{idx}.cd_usr_grid", f"raft.member{k}:Cd", src_indices=[0])
                     elif modeling_options['floating']['members']['outer_shape'][k] == "rectangular":
                         self.connect(f"floatingse.member{k}.side_length_a", f"raft.member{k}:side_length_a")
                         self.connect(f"floatingse.member{k}.side_length_b", f"raft.member{k}:side_length_b")
-                        self.connect(f"floating.memgrid{idx}.ca_usr_grid", f"raft.member{k}:Ca")
-                        self.connect(f"floating.memgrid{idx}.cd_usr_grid", f"raft.member{k}:Cd")
+                        self.connect(f"floating.memgrid{idx}.ca_usr_grid", f"raft.member{k}:Ca", src_indices=[0])
+                        self.connect(f"floating.memgrid{idx}.cd_usr_grid", f"raft.member{k}:Cd", src_indices=[0])
                         self.connect(f"floating.memgrid{idx}.cay_usr_grid", f"raft.member{k}:Cay")
                         self.connect(f"floating.memgrid{idx}.cdy_usr_grid", f"raft.member{k}:Cdy")
 
@@ -1136,10 +1136,18 @@ class WindPark(om.Group):
                         idx = modeling_options["floating"]["members"]["name2idx"][kname]
                         #self.connect(f"floating.memgrp{idx}.outer_diameter",                f"aeroelastic_qblade.member{k}.outer_diameter_in")
                         self.connect(f"floating.memgrp{idx}.s",                             f"aeroelastic_qblade.member{k}:s")
-                        self.connect(f"floatingse.member{k}.outer_diameter",                f"aeroelastic_qblade.member{k}:outer_diameter")
                         self.connect(f"floatingse.member{k}.wall_thickness",                f"aeroelastic_qblade.member{k}:wall_thickness")
+                        self.connect(f"floating.memgrid{idx}.ca_usr_grid",                 f"aeroelastic_qblade.member{k}:Ca", src_indices=[0])
+                        self.connect(f"floating.memgrid{idx}.cd_usr_grid",                 f"aeroelastic_qblade.member{k}:Cd", src_indices=[0])
                         for var in ["joint1", "joint2", "s_ghost1", "s_ghost2"]:
                                 self.connect(f"floating.member_{kname}:{var}",              f"aeroelastic_qblade.member{k}:{var}")
+                        if modeling_options["floating"]["members"]["outer_shape"][k] == "rectangular":
+                            self.connect(f"floatingse.member{k}.side_length_a",             f"aeroelastic_qblade.member{k}:side_length_a")
+                            self.connect(f"floatingse.member{k}.side_length_b",             f"aeroelastic_qblade.member{k}:side_length_b")
+                            self.connect(f"floating.memgrid{idx}.cay_usr_grid",             f"aeroelastic_qblade.member{k}:Cay")
+                            self.connect(f"floating.memgrid{idx}.cdy_usr_grid",             f"aeroelastic_qblade.member{k}:Cdy")
+                        else:
+                            self.connect(f"floatingse.member{k}.outer_diameter",            f"aeroelastic_qblade.member{k}:outer_diameter")
                 
                     if modeling_options['flags']['mooring']:
                         self.connect('mooring.line_diameter',               'aeroelastic_qblade.line_diameter')

@@ -1,0 +1,139 @@
+# Generic modeling options file to run standard WISDEM case
+General:
+    verbosity: False  # When set to True, the code prints to screen many infos
+
+    qblade_configuration:
+        flag: True
+        QB_run_mod: MED15-308_v31.1.2
+        QB_run_dir: mout_MED15-308_v31.1.2
+        qbtoweis_output_filter: QBtoWEIS_output_filter.txt
+        path2qb_dll: /home/rease/papi/Simulations/floatfarm/MED15-308_v31.1.0_OPT_II/QBladeEE_2.0.8.7_dev/libQBladeEE_2.0.8.7_dev.so.1.0.0
+        number_of_workers: 12
+        model_only: False
+
+WISDEM:
+    RotorSE:
+        flag: True
+        n_span: 101
+        n_pitch_perf_surfaces: 10
+        n_tsr_perf_surfaces: 10
+        spar_cap_ss: Spar_Cap_SS
+        spar_cap_ps: Spar_Cap_PS
+        te_ss: TE_reinforcement_SS
+        te_ps: TE_reinforcement_PS
+        peak_thrust_shaving: False
+        thrust_shaving_coeff: 0.8
+        n_sector: 8
+        hubloss: true
+        tiploss: true
+        wakerotation: true
+        usecd: true
+    DriveSE:
+        flag: True
+    TowerSE:             # Options of TowerSE module
+        flag: True
+    BOS:
+        flag: False
+    FixedBottomSE:
+        flag: true
+        
+QBlade: 
+    flag: True
+    simulation:
+        Simulate: True
+        ADDCHANNELS: ['Aerodynamic Power [W]', 'Aerodynamic Thrust [N]', 'Reynolds', 'Axial Induction', 'Lift Coeffficient', 'Drag Coefficient']
+        MODNEWTONITER: 1
+        DLCGenerator: True
+        TIMESTEP: 0.04
+        STOREFROM: 100.0
+        PRESCRIBETYPE: 0
+        ISOFFSHORE: 1
+        ADDDAMP: 20
+        ADDDAMPFACTOR: 10
+        STOREHYDRO: False
+    Aero:
+        ROTORTYPE: HAWT         # only option for now
+        INVERTEDFOILS: False    # dummy variable, only used for VAWTs
+        AFTabMod: 2
+    Main:
+        GLBGEOEPS: 0.2
+        DRTRDOF: False
+        DEF_OUT: True
+        BLD_1: [0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0]
+        BLD_2: [0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0]
+        BLD_3: [0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0]
+        TWR: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    Tower:
+        CRITDAMP: 2
+        STIFFTUNER: 10.0 #INCRESED STIFFNESS TO AVOID PROBLEMS
+        MASSTUNER: 1.0
+        DISC: 20
+    Blade:
+        #beamdyn_file: MED15-308_v31.1.0_BeamDyn_Blade.dat
+        USERAYLEIGHDMP_ANISO: True
+        RAYLEIGHDMP_ANISO: [0.009362055,0.007402555,0.004420971, 0.0, 0.0, 0.0]  #torsional stiffness tuned assuming a natural frequency of 0.67 Hz and 2% crit. damping
+        STIFFTUNER: 1.0
+        MASSTUNER: 1.0
+        DISCTYPE: 1             # DISCTYPE 0-LINEAR; 1-COSINE; 2-STRUCT; 3-AERO
+        DISC: 45
+        BEAMTYPE: 1
+    Turbine:
+        CONTROLLERTYPE: 1
+        CONTROLLERFILE: 'libdiscon_ROSCO-2.9.0'
+        DISCTYPE: 2 ######################### [cosine interpolation, and decrease the number of stations]
+        NUMPANELS: 40
+        WAKETYPE: 1
+        BEMSPEEDUP: 20
+        DYNSTALLTYPE: 2
+        UNSTEADYAERO: True
+        POLARDISC: 16
+        HIMMELSKAMP: True
+    QBladeOcean:
+        override_morison_coefficients: True
+        override_wave: False       # override Hs and Tp from windIO with "SIGHEIGHT" and "PEAKPERIOD"
+        HydroCdN: 1.0
+        HydroCaN: 1.0
+        HydroCpN: 0.0
+        HydroCdA: 1.6
+        HydroCaA: 1.0
+        HydroCpA: 0.0
+        MCFC: 1
+        IsBuoy: 1
+
+SONATA:
+    flag: False
+    radial_stations: [0.0, 0.02, 0.05, 0.1, 0.125, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.94, 0.97, 1]
+    mesh_resolution: 400
+    choose_cutoff: 2
+
+DLC_driver:
+    metocean_conditions:
+          wind_speed: [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25] 
+          wave_height_NSS: [1.589253312, 1.589253312, 1.796850486, 2.066758485, 2.39622745, 2.785549752, 3.237992345, 3.757419053, 4.346083996, 5.004368641, 5.731637064, 6.526989576]
+          wave_period_NSS: [9.788170598, 9.788170598, 9.992163283, 10.24618949, 10.54260929, 10.87776655, 11.25141272, 11.66433667, 12.11660442, 12.60751661, 13.13629721, 13.70255467]  
+          wave_height_fatigue: [1.589253312, 1.589253312, 1.796850486, 2.066758485, 2.39622745, 2.785549752, 3.237992345, 3.757419053, 4.346083996, 5.004368641, 5.731637064, 6.526989576]
+          wave_period_fatigue: [9.788170598, 9.788170598, 9.992163283, 10.24618949, 10.54260929, 10.87776655, 11.25141272, 11.66433667, 12.11660442, 12.60751661, 13.13629721, 13.70255467]  
+          wave_height_SSS: [1.589253312, 1.589253312, 1.796850486, 2.066758485, 2.39622745, 2.785549752, 3.237992345, 3.757419053, 4.346083996, 5.004368641, 5.731637064, 6.526989576]
+          wave_period_SSS: [9.788170598, 9.788170598, 9.992163283, 10.24618949, 10.54260929, 10.87776655, 11.25141272, 11.66433667, 12.11660442, 12.60751661, 13.13629721, 13.70255467]  
+          wave_height_1: 6.98
+          wave_period_1: 11.7
+          wave_height_50: 10.68
+          wave_period_50: 14.2  
+    DLCs:
+        - DLC: "1.1"
+          wind_speed: [3, 5, 7, 9, 10, 11, 13, 15, 17, 19, 22, 25] 
+          n_seeds: 1
+          analysis_time: 100.
+          transient_time: 10.
+          turbulent_wind:
+              HubHt: 190.0
+              GridHeight: 320.0
+              GridWidth: 350.0
+              Clockwise: True
+              RefHt: 190.0
+              PLExp: 0.11
+              IECturbc: -1
+              IEC_WindType: '3ETM'
+
+ROSCO:
+    tuning_yaml: MED15-308_ROSCO.yaml

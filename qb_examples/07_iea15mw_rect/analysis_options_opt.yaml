@@ -6,7 +6,7 @@ general:
 design_variables:
   floating:
     joints:
-      flag: False
+      flag: True
       z_coordinate:
           - names: [main_keel, col1_keel, col2_keel, col3_keel]
             lower_bound: -50

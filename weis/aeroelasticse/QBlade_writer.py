@@ -841,6 +841,19 @@ class InputWriter_QBlade(object):
                     f.write(" ".join(ln) + '\n')
                 f.write('\n')
 
+            if 'NElementsRigidRect' in self.qb_vt['QBladeOcean']:
+                f.write('SUBELEMENTSRIGID_RECT\n')
+                f.write('ElemID     BMASSD     XDIM       YDIM       DIAMETER\n')
+                for i in range(len(self.qb_vt['QBladeOcean']['NElementsRigidRect'])):
+                    ln = []
+                    ln.append('{:<10d}'.format(self.qb_vt['QBladeOcean']['ElemID_rect'][i]))
+                    ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['MASSD_rect'][i]))
+                    ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['SIDE_B'][i]))      # XDIM = side_length_b
+                    ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['SIDE_A'][i]))      # YDIM = side_length_a
+                    ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['DIAMETER_rect'][i]))
+                    f.write(" ".join(ln) + '\n')
+                f.write('\n')
+
             if 'NElements' in self.qb_vt['QBladeOcean']: # only write this table in case flexible members were defined
                 f.write('SUBELEMENTS\n')
                 f.write('ElemID     MASS_[kg/m]     Eix_[N.m^2]   EA_[N]   GJ_[N.m^2]   STRPIT_[deg]    KSX_[-] KSY_[-]   RGX_[-]  RGY_[-]  XCM_[-]  YCM_[-]  YCE_[-]  XCS_[-]  YCS_[-]  DIA_[m]  DAMP[-]\n')

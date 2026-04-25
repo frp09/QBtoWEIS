@@ -1,0 +1,87 @@
+path_params: {FAST_InputFile: Hagnesia_Heavy.fst, FAST_directory: ., rotor_performance_filename: ../Hagnesia_Heavy/Hagnesia_Heavy_Cp_Ct_Cq.txt}
+controller_params:
+    flag: true
+    PS_Mode: 0                          #Pitch saturation mode (0- no pitch saturation, 1- peak shaving, 2- Cp-maximizing pitch saturation, 3- peak shaving and Cp-maximizing pitch saturation)
+    #ps_percent: 0.9
+    Fl_Mode: 0                          #Floating specific feedback mode (0- no nacelle velocity feedback, 1- feed back translational velocity, 2- feed back rotational veloicty)
+    #zeta_pc: [1, 1, 1, 1]               #List of pitch controller desired damping ratio at U_pc [-], values from 15MW ROSCO yaml file
+    #omega_pc: [0.2, 0.2, 0.2, 0.2]
+    #U_pc: [12, 15, 20, 23]              #List of wind speeds to schedule pitch control zeta and omega
+    VS_TSRopt: 10.0 #Power-maximizing region 2 tip-speed-ratio. Only used in VS_ControlMode = 2.
+    zeta_vs: 0.85                       #torque controller zeta and omega
+    omega_vs: 0.12
+    twr_freq: 2.76460153515902        #values from example 22MW, to be changed, values necessary for filtering tower top acceleration in x direction?
+    ptfm_freq: 0.276460153515902       #notch filters for twr and platform fore-aft frequ? see rosco paper (rad/s)
+    Kp_float: [-10]                     #Gain(s) of floating feedback control
+    PA_Mode: 2                          #Pitch actuator mode {0 - not used, 1 - first order filter, 2 - second order filter}
+    PA_CornerFreq: 3.14                 #Pitch actuator freq and damping, from 15MW DISCON.IN file 
+    PA_Damping: 0.707
+    U_ps: [3, 6, 9, 11, 13, 16, 19, 22, 25]
+    ps_angles_pc: [0.023, -0.015, 0.045, 0.085, 0.125, 0.15, 0.19, 0.23, 0.28]
+ 
+    DISCON:
+        #properties:
+        LoggingLevel: 0        # (0- write no debug files, 1- write standard output .dbg-file, 2- write standard output .dbg-file and complete avrSWAP-array .dbg2-file)
+        F_LPFType: 1           # 1- first-order low-pass filter, 2- second-order low-pass filter (currently filters generator speed and pitch control signals
+        VS_ControlMode: 2      #Generator torque control mode in above rated conditions (0- no torque control, 1- k*omega^2 with PI transitions, 2- WSE TSR Tracking, 3- Power-based TSR Tracking)
+        VS_ConstPower: 1 # Do constant power torque control, where above rated torque varies
+        F_NotchType: 0 # Notch on the measured generator speed and/or tower fore-aft motion (for floating) (0- disable, 1- generator speed, 2- tower-top fore-aft motion, 3- generator speed and tower-top fore-aft motion)
+        IPC_ControlMode: 0 # Turn Individual Pitch Control (IPC) for fatigue load reductions (pitch contribution) (0- off, 1- 1P reductions, 2- 1P+2P reductions)
+        PC_ControlMode: 1 #Blade pitch control mode (0- No pitch, fix to fine pitch, 1- active PI blade pitch control)
+        Y_ControlMode: 0 #Yaw control mode (0- no yaw control, 1- yaw rate control, 2- yaw-by-IPC)
+        SS_Mode: 1 #Setpoint Smoother mode (0- no setpoint smoothing, 1- introduce setpoint smoothing)
+        WE_Mode: 2 #Wind speed estimator mode (0- One-second low pass filtered hub height wind speed, 1- Immersion and Invariance Estimator, 2- Extended Kalman Filter)
+        PS_Mode: 1 #Pitch saturation mode (0- no pitch saturation, 1- implement pitch saturation)
+        SD_Mode: 0 #Shutdown mode (0- no shutdown procedure, 1- pitch to max pitch at shutdown)
+        Fl_Mode: 1 #Floating specific feedback mode (0- no nacelle velocity feedback, 1- feed back translational velocity, 2- feed back rotational veloicty)
+        Flp_Mode: 0 #Flap control mode (0- no flap control, 1- steady state flap angle, 2- Proportional flap control)
+        OL_Mode: 0 #Open loop control mode (0 - no open-loop control, 1 - direct open loop control, 2 - rotor position control)
+        PA_Mode: 0 #Pitch actuator mode {0 - not used, 1 - first order filter, 2 - second order filter}
+        F_LPFCornerFreq: 0.91328 #Corner frequency (-3dB point) in the low-pass filters, 
+        F_LPFDamping: 0 #Damping coefficient (used only when F_FilterType = 2 [-]
+        F_NumNotchFilts: 1 #Number of notch filters placed on sensors
+        F_NotchFreqs: 1.4977 #Natural frequency of the notch filters. Array with length F_NumNotchFilts
+        F_NotchBetaNum: 0 #Damping value of numerator (determines the width of notch). Array with length F_NumNotchFilts, [-]
+        F_NotchBetaDen: 0.25 #Damping value of denominator (determines the depth of notch). Array with length F_NumNotchFilts, [-]
+        F_GenSpdNotch_N: 0 #Number of notch filters on generator speed
+        F_TwrTopNotch_N: 1 #Number of notch filters on tower top acceleration signal
+        F_GenSpdNotch_Ind: 0 #Indices of notch filters on generator speed
+        F_TwrTopNotch_Ind: 1 #Indices of notch filters on tower top acceleration signal
+        F_SSCornerFreq: 0.628
+        F_WECornerFreq: 0.20000 #Corner frequency (-3dB point) in the first order low pass filter for the wind speed estimate 
+        F_FlCornerFreq: [0.271748, 1.000] #Natural frequency and damping in the second order low pass filter of the tower-top fore-aft motion for floating feedback control 
+        F_FlHighPassFreq: 0.01042
+        F_FlpCornerFreq: [8.3149, 1.0000] #Corner frequency and damping in the second order low pass filter of the blade root bending moment for flap control 
+        PC_GS_n: 30 #Amount of gain-scheduling table entries
+        PC_GS_angles: [0.076083, 0.104688, 0.126357, 0.145495, 0.162494, 0.178036, 0.192511, 0.206329, 0.219134, 0.23184, 0.243634, 0.255191, 0.266695, 0.277357, 0.288015, 0.298666, 0.308612, 0.318571, 0.328551, 0.338056, 0.347439, 0.356847, 0.366088, 0.374993, 0.383919, 0.392873, 0.401475, 0.409975, 0.418502, 0.427065] #Gain-schedule table- pitch angles 
+        PC_GS_KP: [-1.48978535, -1.3093499, -1.16582665, -1.04894105, -0.95190645, -0.8700617, -0.80009895, -0.7396054, -0.6867812, -0.6402542, -0.5989623, -0.56206895, -0.52890595, -0.49893575, -0.4717183, -0.44689025, -0.4241513, -0.40324795, -0.3839657, -0.3661245, -0.3495677, -0.3341614, -0.3197899, -0.30635245, -0.2937613, -0.2819378, -0.27081435, -0.26033115, -0.2504336, -0.24107425] #Gain-schedule table- pitch controller kp gains 
+        PC_GS_KI: [-0.183068, -0.162209, -0.145616, -0.132104, -0.120886, -0.111424, -0.103336, -0.096343, -0.090236, -0.084857, -0.080083, -0.075818, -0.071984, -0.06852, -0.065373, -0.062503, -0.059874, -0.057457, -0.055228, -0.053166, -0.051252, -0.049471, -0.047809, -0.046256, -0.0448, -0.043433, -0.042147, -0.040935, -0.039791, -0.038709] #Gain-schedule table- pitch controller ki gains 
+        PC_GS_KD: [0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000] #Gain-schedule table- pitch controller kd gains
+        PC_GS_TF: [0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000] #Gain-schedule table- pitch controller tf gains (derivative filter)
+        PC_MaxPit: 1.57 #Maximum physical pitch limit, 
+        PC_MinPit: -0.07 #Minimum physical pitch limit, 
+        PC_MaxRat: 0.034910 #Maximum pitch rate (in absolute value) in pitch controller
+        PC_MinRat: -0.034910 #Minimum pitch rate (in absolute value) in pitch controller
+        PC_FinePit: -0.04 #Record 5- Below-rated pitch angle set-point
+        PC_Switch: 0.017450 #Angle above lowest minimum pitch angle for switch
+        VS_GenEff: 95.4 #Generator efficiency mechanical power -> electrical power, should match the efficiency defined in the generator properties
+        VS_MaxRat: 4500000 #Maximum torque rate (in absolute value) in torque controller
+        VS_MinTq: 0.0 #Minimum generator torque (HSS side)
+        VS_MinOMSpd: 0.193310 #Minimum generator speed 
+        VS_RtPwr: 15000000.00000 #Wind turbine rated power 
+        #VS_RefSpd: 0.65
+        VS_RtTq: 23000000.0
+        VS_ArSatTq: 23000000.0
+        #VS_TSRopt: 10.0 #Power-maximizing region 2 tip-speed-ratio. Only used in VS_ControlMode = 2.
+        VS_PwrFiltF: 0.314 #Low pass filter on power used to determine generator speed set point.  Only used in VS_ControlMode = 3.
+        SS_VSGain: 1.0 #Variable speed torque controller setpoint smoother gain
+        SS_PCGain: 0.0010 #Collective pitch controller setpoint smoother gain
+        SD_CornerFreq: 0.418880 #Cutoff Frequency for first order low-pass filter for blade pitch angle
+turbine_params: {rotor_inertia: 350062176.07579195, rated_rotor_speed: 0.65, v_min: 3.0, v_rated: 9.65, v_max: 25.0, max_pitch_rate: 0.03490658503988659, max_torque_rate: 4500000.0, rated_power: 15000000.0, bld_edgewise_freq: 4.0324, bld_flapwise_freq: 3.4872, TSR_operational: 10}
+linmodel_tuning:
+    type: none
+    linfile_path: none
+    lintune_outpath: lintune_outfiles
+    load_parallel: false
+    stability_margin: 0.1
+    omega_pc: {}
