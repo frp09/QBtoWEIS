@@ -905,12 +905,13 @@ class InputWriter_QBlade(object):
             f.write('MemID   Jnt1ID  Jnt2ID  ElmID   ElmRot  HyCoID  IsBuoy  MaGrID  FldArea ElmDsc Name (optional)\n')
             for i in range(self.qb_vt['QBladeOcean']['NSubMembers']):
                 ln = []
+                hycoid_key = 'HyCoID_submem' if 'HyCoID_submem' in self.qb_vt['QBladeOcean'] else 'HyCoID'
                 ln.append('{:<7d}'.format(self.qb_vt['QBladeOcean']['MemID'][i]))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['Jnt1ID'][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['Jnt2ID'][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['ElmID'][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['ElmRot'][i])))
-                ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['HyCoID'][i])))
+                ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean'][hycoid_key][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['IsBuoy'][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['MaGrID'][i])))
                 ln.append('{:<7d}'.format(self.qb_vt['QBladeOcean']['FldArea'][i]))
@@ -932,6 +933,25 @@ class InputWriter_QBlade(object):
                 ln.append('{}'.format(self.qb_vt['QBladeOcean']['MCFC'][i]))
                 f.write(" ".join(ln) + '\n')
             f.write('\n')
+
+            if 'NElementsRigidRect' in self.qb_vt['QBladeOcean']:
+                f.write('HYDROMEMBERCOEFF_RECT\n')
+                f.write('CoeffID CdNx    CaNx    CpNx    CdNy    CaNy    CpNy    MCFC    CdAx*   f_c*    alpha*\n')
+                for i in range(len(self.qb_vt['QBladeOcean']['CoeffID_rect'])):
+                    ln = []
+                    ln.append('{:<7d}'.format(self.qb_vt['QBladeOcean']['CoeffID_rect'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCdNx'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCaNx'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCpNx'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCdNy'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCaNy'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCpNy'][i]))
+                    ln.append('{}'.format(self.qb_vt['QBladeOcean']['MCFC_rect'][i]))
+                    ln.append('{:.2f}'.format(0.0)) # Placeholder for CdAx
+                    ln.append('{:.2f}'.format(0.0)) # Placeholder for f_c
+                    ln.append('{:.2f}'.format(0.0)) # Placeholder for alpha
+                    f.write(" ".join(ln) + '\n')
+                f.write('\n')
 
             f.write('HYDROJOINTCOEFF\n')
             f.write('CoeffID JointID CdA CaA CpA\n')

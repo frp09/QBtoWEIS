@@ -241,8 +241,8 @@ class QBLADELoadCases(ExplicitComponent):
                     outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
                     self.add_input(f"member{k}:joint1", np.zeros(3), units="m")
                     self.add_input(f"member{k}:joint2", np.zeros(3), units="m")
-                    self.add_input(f"member{k}:Cd", 0)
-                    self.add_input(f"member{k}:Ca", 0)
+                    self.add_input(f"member{k}:Cd", np.zeros(n_height_mem))
+                    self.add_input(f"member{k}:Ca", np.zeros(n_height_mem))
                     self.add_input(f"member{k}:s", np.zeros(n_height_mem))
                     self.add_input(f"member{k}:s_ghost1", 0.0)
                     self.add_input(f"member{k}:s_ghost2", 0.0)
@@ -950,6 +950,8 @@ class QBLADELoadCases(ExplicitComponent):
                 rect_member_joint_end   = {}  # k -> 0-based joint index of last node
                 member_cd_reduced = np.array([])
                 member_ca_reduced = np.array([])
+                member_cdy_reduced = np.array([])
+                member_cay_reduced = np.array([])
 
                 # Look over members and grab all nodes and internal connections
                 n_member = modopt["floating"]["members"]["n_members"]
@@ -972,6 +974,10 @@ class QBLADELoadCases(ExplicitComponent):
                         i_side_a = inputs[f"member{k}:side_length_a"]
                         i_side_b = inputs[f"member{k}:side_length_b"]
                         idiam = np.maximum(i_side_a, i_side_b)  # use max dimension as reference for grid generation
+                        i_cdy = np.atleast_1d(inputs[f"member{k}:Cdy"])
+                        i_cay = np.atleast_1d(inputs[f"member{k}:Cay"])
+                        cdy0 = float(i_cdy[0])
+                        cay0 = float(i_cay[0])
                     else:
                         idiam = inputs[f"member{k}:outer_diameter"]
                     s_coarse = make_coarse_grid(s_grid, idiam)
@@ -1044,6 +1050,12 @@ class QBLADELoadCases(ExplicitComponent):
                     n_new_elems = len(inode_range)
                     member_cd_reduced = np.append(member_cd_reduced, np.full(n_new_elems, cd0))
                     member_ca_reduced = np.append(member_ca_reduced, np.full(n_new_elems, ca0))
+                    if outer_shape_k == "rectangular":
+                        member_cdy_reduced = np.append(member_cdy_reduced, np.full(n_new_elems, cdy0))
+                        member_cay_reduced = np.append(member_cay_reduced, np.full(n_new_elems, cay0))
+                    else:
+                        member_cdy_reduced = np.append(member_cdy_reduced, np.full(n_new_elems, cd0))
+                        member_cay_reduced = np.append(member_cay_reduced, np.full(n_new_elems, ca0))
 
                     if outer_shape_k == "rectangular":
                         # Interpolate side_a and side_b at node positions along the member
@@ -1152,23 +1164,58 @@ class QBLADELoadCases(ExplicitComponent):
                         "QBladeOcean: POTFLOW=True, forcing global CaA baseline to 0.0 to avoid double-counting added mass with radiation terms."
                     )
                 member_ca_reduced[:] = 0.0
+                member_cay_reduced[elem_is_rect] = 0.0
                 floater_hydro_caA[0] = 0.0
 
-            coeff_map = {}
+            # Separate dedup maps: circular members → HYDROMEMBERCOEFF (x-direction only)
+            #                      rectangular members → HYDROMEMBERCOEFF_RECT (x + y direction)
+            floater_hydro_rect_cdNx = np.empty(0)
+            floater_hydro_rect_caNx = np.empty(0)
+            floater_hydro_rect_cpNx = np.empty(0)
+            floater_hydro_rect_cdNy = np.empty(0)
+            floater_hydro_rect_caNy = np.empty(0)
+            floater_hydro_rect_cpNy = np.empty(0)
+
+            circ_coeff_map = {}
+            rect_coeff_map = {}
             hycoid = np.zeros(n_members, dtype=np.int_)
+            hycoid_rect = np.zeros(n_members, dtype=np.int_)
             for i in range(n_members):
-                cd_i = float(member_cd_reduced[i])
-                ca_i = float(member_ca_reduced[i])
-                cp_i = cpn_default
-                key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8))
-                if key not in coeff_map:
-                    coeff_map[key] = len(floater_hydro_cdN) + 1
-                    floater_hydro_cdN = np.append(floater_hydro_cdN, cd_i)
-                    floater_hydro_caN = np.append(floater_hydro_caN, ca_i)
-                    floater_hydro_cpN = np.append(floater_hydro_cpN, cp_i)
-                hycoid[i] = coeff_map[key]
+                cd_i  = float(member_cd_reduced[i])
+                ca_i  = float(member_ca_reduced[i])
+                cp_i  = cpn_default
+                cdy_i = float(member_cdy_reduced[i])
+                cay_i = float(member_cay_reduced[i])
+                if elem_is_rect[i]:
+                    key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8),
+                           round(cdy_i, 8), round(cay_i, 8))
+                    if key not in rect_coeff_map:
+                        rect_coeff_map[key] = len(floater_hydro_rect_cdNx) + 1
+                        floater_hydro_rect_cdNx = np.append(floater_hydro_rect_cdNx, cd_i)
+                        floater_hydro_rect_caNx = np.append(floater_hydro_rect_caNx, ca_i)
+                        floater_hydro_rect_cpNx = np.append(floater_hydro_rect_cpNx, cp_i)
+                        floater_hydro_rect_cdNy = np.append(floater_hydro_rect_cdNy, cdy_i)
+                        floater_hydro_rect_caNy = np.append(floater_hydro_rect_caNy, cay_i)
+                        floater_hydro_rect_cpNy = np.append(floater_hydro_rect_cpNy, cp_i)  # CpNy = CpNx
+                    hycoid_rect[i] = rect_coeff_map[key]
+                    hycoid[i] = 0  # not used in HYDROMEMBERCOEFF for rect members
+                else:
+                    key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8))
+                    if key not in circ_coeff_map:
+                        circ_coeff_map[key] = len(floater_hydro_cdN) + 1
+                        floater_hydro_cdN = np.append(floater_hydro_cdN, cd_i)
+                        floater_hydro_caN = np.append(floater_hydro_caN, ca_i)
+                        floater_hydro_cpN = np.append(floater_hydro_cpN, cp_i)
+                    hycoid[i] = circ_coeff_map[key]
+                    hycoid_rect[i] = 0  # not used in HYDROMEMBERCOEFF_RECT for circ members
             qb_vt['QBladeOcean']['HyCoID'] = hycoid
+            qb_vt['QBladeOcean']['HyCoID_rect'] = hycoid_rect
             nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
+            # SUBMEMBERS HyCoID offset is deferred until after mooring coefficients are
+            # concatenated (ncoefficients). Store raw hycoid_rect (1-based within rect table)
+            # for now; the final shift is applied after the Hydrodynamic Coefficients block.
+            hycoid_submem = np.where(elem_is_rect, hycoid_rect, hycoid).astype(np.int_)
+            qb_vt['QBladeOcean']['HyCoID_submem'] = hycoid_submem
 
             qb_vt['QBladeOcean']['NJoints'] = n_joints
             qb_vt['QBladeOcean']['JointID'] = ijoints
@@ -1202,6 +1249,17 @@ class QBLADELoadCases(ExplicitComponent):
                 qb_vt['QBladeOcean']['SIDE_B']             = side_b_coarse[elem_is_rect]
                 qb_vt['QBladeOcean']['DIAMETER_rect']      = diam_rect_coarse[elem_is_rect]
                 qb_vt['QBladeOcean']['MASSD_rect']         = np.ones(n_rect_elems) * 0.0001
+                # Per-element HyCoID for rectangular members (indexes into HYDROMEMBERCOEFF_RECT)
+                qb_vt['QBladeOcean']['HyCoID_rect_elem']   = hycoid_rect[elem_is_rect]
+                n_rect_coeffs = floater_hydro_rect_cdNx.shape[0]
+                qb_vt['QBladeOcean']['HydroCdNx'] = floater_hydro_rect_cdNx
+                qb_vt['QBladeOcean']['HydroCaNx'] = floater_hydro_rect_caNx
+                qb_vt['QBladeOcean']['HydroCpNx'] = floater_hydro_rect_cpNx
+                qb_vt['QBladeOcean']['HydroCdNy'] = floater_hydro_rect_cdNy
+                qb_vt['QBladeOcean']['HydroCaNy'] = floater_hydro_rect_caNy
+                qb_vt['QBladeOcean']['HydroCpNy'] = floater_hydro_rect_cpNy
+                qb_vt['QBladeOcean']['CoeffID_rect'] = np.arange(n_rect_coeffs, dtype=np.int_) + 1  # offset applied after mooring
+                qb_vt['QBladeOcean']['MCFC_rect']    = np.ones(n_rect_coeffs, dtype=np.int_) * qb_vt['QBladeOcean']['MCFC']
 
             qb_vt['QBladeOcean']['NSubMembers'] = n_members
             qb_vt['QBladeOcean']['MemID'] = imembers
@@ -1343,6 +1401,15 @@ class QBLADELoadCases(ExplicitComponent):
             icoefficients = np.arange(ncoefficients, dtype=np.int_) + 1
             qb_vt['QBladeOcean']['CoeffID']  =  icoefficients
             qb_vt['QBladeOcean']['MCFC']     =  np.ones(ncoefficients, dtype=np.int_)*qb_vt['QBladeOcean']['MCFC']
+            # Apply final offset to rect CoeffIDs and SUBMEMBERS HyCoID now that ncoefficients is known.
+            if 'CoeffID_rect' in qb_vt['QBladeOcean']:
+                qb_vt['QBladeOcean']['CoeffID_rect'] += ncoefficients
+                hycoid_r = qb_vt['QBladeOcean']['HyCoID_rect']
+                qb_vt['QBladeOcean']['HyCoID_submem'] = np.where(
+                    hycoid_r > 0,
+                    hycoid_r + ncoefficients,
+                    qb_vt['QBladeOcean']['HyCoID_submem']
+                ).astype(np.int_)
         
         # Tower inputs for rigid simulations
         if qb_vt['Turbine']['NOSTRUCTURE']:
