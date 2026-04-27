@@ -953,6 +953,7 @@ class QBLADELoadCases(ExplicitComponent):
                 member_cp_reduced = np.array([])
                 member_cdy_reduced = np.array([])
                 member_cay_reduced = np.array([])
+                member_cpy_reduced = np.array([])
 
                 # Look over members and grab all nodes and internal connections
                 n_member = modopt["floating"]["members"]["n_members"]
@@ -971,7 +972,7 @@ class QBLADELoadCases(ExplicitComponent):
                     else:
                         cd0 = float(i_cd[0])
                         ca0 = float(i_ca[0])
-                        cp0 = 1.0
+                        cp0 = 1.0   # default cp = 1
                         if i_cd.size > 1 and not np.allclose(i_cd, cd0):
                             logger.warning(
                                 f"QBladeOcean: member{k}:Cd varies along member length; using first value ({cd0}) for HYDROMEMBERCOEFF mapping."
@@ -989,11 +990,13 @@ class QBLADELoadCases(ExplicitComponent):
                         if qb_vt['QBladeOcean']['override_morison_coefficients']:
                             cdy0 = float(qb_vt['QBladeOcean'].get('HydroCdNy', {}).get(name, [0.0, 0.0])[0])
                             cay0 = float(qb_vt['QBladeOcean'].get('HydroCaNy', {}).get(name, [0.0, 0.0])[0])
+                            cpy0 = float(qb_vt['QBladeOcean'].get('HydroCpNy', {}).get(name, [cp0, cp0])[0])
                         else:
                             i_cdy = np.atleast_1d(inputs[f"member{k}:Cdy"])
                             i_cay = np.atleast_1d(inputs[f"member{k}:Cay"])
                             cdy0 = float(i_cdy[0])
                             cay0 = float(i_cay[0])
+                            cpy0 = cp0  # no separate y-direction pressure in geometry; mirror x-direction value
 
                     else:
                         idiam = inputs[f"member{k}:outer_diameter"]
@@ -1072,9 +1075,11 @@ class QBLADELoadCases(ExplicitComponent):
                     if outer_shape_k == "rectangular":
                         member_cdy_reduced = np.append(member_cdy_reduced, np.full(n_new_elems, cdy0))
                         member_cay_reduced = np.append(member_cay_reduced, np.full(n_new_elems, cay0))
+                        member_cpy_reduced = np.append(member_cpy_reduced, np.full(n_new_elems, cpy0))
                     else:
                         member_cdy_reduced = np.append(member_cdy_reduced, np.full(n_new_elems, cd0))
                         member_cay_reduced = np.append(member_cay_reduced, np.full(n_new_elems, ca0))
+                        member_cpy_reduced = np.append(member_cpy_reduced, np.full(n_new_elems, cp0))
 
 
                     if outer_shape_k == "rectangular":
@@ -1181,7 +1186,7 @@ class QBLADELoadCases(ExplicitComponent):
                 member_ca_reduced[:] = 0.0
                 member_cp_reduced[:] = 0.0
                 member_cay_reduced[elem_is_rect] = 0.0
-                #member_cpy_reduced[elem_is_rect] = 0.0
+                member_cpy_reduced[elem_is_rect] = 0.0
 
             # Separate dedup maps: circular members → HYDROMEMBERCOEFF (x-direction only)
             #                      rectangular members → HYDROMEMBERCOEFF_RECT (x + y direction)
@@ -1202,9 +1207,10 @@ class QBLADELoadCases(ExplicitComponent):
                 cp_i  = float(member_cp_reduced[i])
                 cdy_i = float(member_cdy_reduced[i])
                 cay_i = float(member_cay_reduced[i])
+                cpy_i = float(member_cpy_reduced[i])
                 if elem_is_rect[i]:
                     key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8),
-                           round(cdy_i, 8), round(cay_i, 8))
+                           round(cdy_i, 8), round(cay_i, 8), round(cpy_i, 8))
                     if key not in rect_coeff_map:
                         rect_coeff_map[key] = len(floater_hydro_rect_cdNx) + 1
                         floater_hydro_rect_cdNx = np.append(floater_hydro_rect_cdNx, cd_i)
@@ -1212,7 +1218,7 @@ class QBLADELoadCases(ExplicitComponent):
                         floater_hydro_rect_cpNx = np.append(floater_hydro_rect_cpNx, cp_i)
                         floater_hydro_rect_cdNy = np.append(floater_hydro_rect_cdNy, cdy_i)
                         floater_hydro_rect_caNy = np.append(floater_hydro_rect_caNy, cay_i)
-                        floater_hydro_rect_cpNy = np.append(floater_hydro_rect_cpNy, cp_i)  # CpNy = CpNx
+                        floater_hydro_rect_cpNy = np.append(floater_hydro_rect_cpNy, cpy_i)
                     hycoid_rect[i] = rect_coeff_map[key]
                     hycoid[i] = 0  # not used in HYDROMEMBERCOEFF for rect members
                 else:
@@ -1291,16 +1297,29 @@ class QBLADELoadCases(ExplicitComponent):
             CpA_arr = np.zeros(n_joints)
             warned_potflow_joint_ca = False
             wt_fp_members = self.options['wt_init']["components"]["floating_platform"]["members"]
+            # Name-based lookup avoids fragile ordering assumptions between wt_init and modopt
+            wt_fp_member_by_name = {m.get("name", ""): m for m in wt_fp_members}
             for k in range(n_member):
                 if k not in member_joint_start:
                     continue
                 j1_0 = member_joint_start[k]  # 0-based index
                 j2_0 = member_joint_end[k]    # 0-based index
-                member_data = wt_fp_members[k]
-                cd_end_vals = member_data.get("CdEnd", [0.0, 0.0])
-                ca_end_vals = member_data.get("CaEnd", [0.0, 0.0])
+                mem_name = modopt["floating"]["members"]["name"][k]
+                member_data = wt_fp_member_by_name.get(mem_name, {})
+                if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                    # Use schema-documented per-member axial overrides (HydroCdA/HydroCaA/HydroCpA)
+                    cd_end_vals = qb_vt['QBladeOcean'].get('HydroCdA', {}).get(mem_name, [0.0, 0.0])
+                    ca_end_vals = qb_vt['QBladeOcean'].get('HydroCaA', {}).get(mem_name, [0.0, 0.0])
+                    cp_end_vals = qb_vt['QBladeOcean'].get('HydroCpA', {}).get(mem_name, [0.0, 0.0])
+                else:
+                    # Fall back to geometry CdEnd/CaEnd fields from wt_init
+                    cd_end_vals = member_data.get("CdEnd", [0.0, 0.0])
+                    ca_end_vals = member_data.get("CaEnd", [0.0, 0.0])
+                    cp_end_vals = [0.0, 0.0]
                 CdA_arr[j1_0] = float(cd_end_vals[0])
                 CdA_arr[j2_0] = float(cd_end_vals[-1])
+                CpA_arr[j1_0] = float(cp_end_vals[0])
+                CpA_arr[j2_0] = float(cp_end_vals[-1])
                 if qb_vt['QBladeOcean']['POTFLOW']:
                     if (not warned_potflow_joint_ca) and (np.abs(float(ca_end_vals[0])) > 0.0 or np.abs(float(ca_end_vals[-1])) > 0.0):
                         logger.warning(

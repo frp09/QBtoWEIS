@@ -74,11 +74,11 @@ QBlade:                         # Options for WEIS fidelity, nonlinear time doma
     QBladeOcean:
         USEADVANCEDBUOYANCY: True
         ADVANCEDBUOYANCY: 50.0
-        override_morison_coefficients: False # use the morison coefficients defined in this file like "HydroCdN" etc.
+        override_morison_coefficients: True # use the morison coefficients defined in this file like "HydroCdN" etc.
         override_wave: False                # override Hs and Tp from windIO with "SIGHEIGHT" and "PEAKPERIOD"
         SIGHEIGHT:  [3,4,5]
         PEAKPERIOD: [10,10.5,11]
-        POTFLOW: True                      # To deactivate potential flow, override_morison_coefficients should be true if set to 0
+        POTFLOW: False                      # To deactivate potential flow, override_morison_coefficients should be true if set to 0
         DIFF_EVAL_TYPE: 0 
         MemberName: [main_column, column1, column2, column3, Y_pontoon_upper1, Y_pontoon_upper2, Y_pontoon_upper3, Y_pontoon_lower1, Y_pontoon_lower2, Y_pontoon_lower3]
         ElmDsc: [12.0, 12.0, 12.0, 12.0, 2.0, 2.0, 2.0, 10.0, 10.0, 10.0]  
