@@ -29,9 +29,16 @@ WISDEM:
         flag: True
     FloatingSE:
         flag: True
+
+RAFT:
+    flag: True
+    potential_model_override: 0
+    trim_ballast: 2
+    heave_tol: 1
+    save_designs: True
     
 QBlade:                         # Options for WEIS fidelity, nonlinear time domain with QBlade
-    flag: True
+    flag: False
     simulation:
         Simulate: True
         wave_flag: True

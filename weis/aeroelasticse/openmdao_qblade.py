@@ -946,10 +946,11 @@ class QBLADELoadCases(ExplicitComponent):
                 side_b_coarse = np.array([])
                 diam_rect_coarse = np.array([])
                 elem_is_rect = np.array([], dtype=bool)
-                rect_member_joint_start = {}  # k -> 0-based joint index of first node
-                rect_member_joint_end   = {}  # k -> 0-based joint index of last node
+                member_joint_start = {}  # k -> 0-based joint index of first node (all members)
+                member_joint_end   = {}  # k -> 0-based joint index of last node (all members)
                 member_cd_reduced = np.array([])
                 member_ca_reduced = np.array([])
+                member_cp_reduced = np.array([])
                 member_cdy_reduced = np.array([])
                 member_cay_reduced = np.array([])
 
@@ -957,27 +958,43 @@ class QBLADELoadCases(ExplicitComponent):
                 n_member = modopt["floating"]["members"]["n_members"]
                 for k in range(n_member):
                     outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
+                    name = modopt["floating"]["members"]["name"][k]
+
                     s_grid = inputs[f"member{k}:s"]
                     i_cd = np.atleast_1d(inputs[f"member{k}:Cd"])
                     i_ca = np.atleast_1d(inputs[f"member{k}:Ca"])
-                    cd0 = float(i_cd[0])
-                    ca0 = float(i_ca[0])
-                    if i_cd.size > 1 and not np.allclose(i_cd, cd0):
-                        logger.warning(
-                            f"QBladeOcean: member{k}:Cd varies along the member; using first value ({cd0}) for HYDROMEMBERCOEFF mapping."
-                        )
-                    if i_ca.size > 1 and not np.allclose(i_ca, ca0):
-                        logger.warning(
-                            f"QBladeOcean: member{k}:Ca varies along the member; using first value ({ca0}) for HYDROMEMBERCOEFF mapping."
-                        )
+
+                    if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                        cd0 = float(qb_vt['QBladeOcean']['HydroCdN'][name][0])
+                        ca0 = float(qb_vt['QBladeOcean']['HydroCaN'][name][0])
+                        cp0 = float(qb_vt['QBladeOcean'].get('HydroCpN', {}).get(name, [0.0, 0.0])[0])
+                    else:
+                        cd0 = float(i_cd[0])
+                        ca0 = float(i_ca[0])
+                        cp0 = 1.0
+                        if i_cd.size > 1 and not np.allclose(i_cd, cd0):
+                            logger.warning(
+                                f"QBladeOcean: member{k}:Cd varies along member length; using first value ({cd0}) for HYDROMEMBERCOEFF mapping."
+                            )
+                        if i_ca.size > 1 and not np.allclose(i_ca, ca0):
+                            logger.warning(
+                                f"QBladeOcean: member{k}:Ca varies along member length; using first value ({ca0}) for HYDROMEMBERCOEFF mapping."
+                            )
+
+                    # if the member is rectangular also assign coefficients in the y-direction    
                     if outer_shape_k == "rectangular":
                         i_side_a = inputs[f"member{k}:side_length_a"]
                         i_side_b = inputs[f"member{k}:side_length_b"]
                         idiam = np.maximum(i_side_a, i_side_b)  # use max dimension as reference for grid generation
-                        i_cdy = np.atleast_1d(inputs[f"member{k}:Cdy"])
-                        i_cay = np.atleast_1d(inputs[f"member{k}:Cay"])
-                        cdy0 = float(i_cdy[0])
-                        cay0 = float(i_cay[0])
+                        if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                            cdy0 = float(qb_vt['QBladeOcean'].get('HydroCdNy', {}).get(name, [0.0, 0.0])[0])
+                            cay0 = float(qb_vt['QBladeOcean'].get('HydroCaNy', {}).get(name, [0.0, 0.0])[0])
+                        else:
+                            i_cdy = np.atleast_1d(inputs[f"member{k}:Cdy"])
+                            i_cay = np.atleast_1d(inputs[f"member{k}:Cay"])
+                            cdy0 = float(i_cdy[0])
+                            cay0 = float(i_cay[0])
+
                     else:
                         idiam = inputs[f"member{k}:outer_diameter"]
                     s_coarse = make_coarse_grid(s_grid, idiam)
@@ -1048,14 +1065,17 @@ class QBLADELoadCases(ExplicitComponent):
                     N1 = np.append(N1, nk + inode_range + 1)
                     N2 = np.append(N2, nk + inode_range + 2)
                     n_new_elems = len(inode_range)
+
                     member_cd_reduced = np.append(member_cd_reduced, np.full(n_new_elems, cd0))
                     member_ca_reduced = np.append(member_ca_reduced, np.full(n_new_elems, ca0))
+                    member_cp_reduced = np.append(member_cp_reduced, np.full(n_new_elems, cp0))
                     if outer_shape_k == "rectangular":
                         member_cdy_reduced = np.append(member_cdy_reduced, np.full(n_new_elems, cdy0))
                         member_cay_reduced = np.append(member_cay_reduced, np.full(n_new_elems, cay0))
                     else:
                         member_cdy_reduced = np.append(member_cdy_reduced, np.full(n_new_elems, cd0))
                         member_cay_reduced = np.append(member_cay_reduced, np.full(n_new_elems, ca0))
+
 
                     if outer_shape_k == "rectangular":
                         # Interpolate side_a and side_b at node positions along the member
@@ -1069,14 +1089,16 @@ class QBLADELoadCases(ExplicitComponent):
                         diam_rect_coarse = np.append(diam_rect_coarse, np.sqrt((ia_elems*ib_elems)/np.pi)*2)#   np.maximum(ia_elems, ib_elems))
                         elem_is_rect     = np.append(elem_is_rect,     np.ones(n_new_elems, dtype=bool))
                         d_coarse         = np.append(d_coarse,         np.zeros(n_new_elems))  # placeholder
-                        rect_member_joint_start[k] = nk
-                        rect_member_joint_end[k]   = nk + inode_xyz.shape[0] - 1
+                        member_joint_start[k] = nk
+                        member_joint_end[k]   = nk + inode_xyz.shape[0] - 1
                     else:
                         d_coarse      = np.append(d_coarse,      id_coarse)
                         side_a_coarse = np.append(side_a_coarse, np.zeros(n_new_elems))
                         side_b_coarse = np.append(side_b_coarse, np.zeros(n_new_elems))
                         diam_rect_coarse = np.append(diam_rect_coarse, np.zeros(n_new_elems))
                         elem_is_rect  = np.append(elem_is_rect,  np.zeros(n_new_elems, dtype=bool))
+                        member_joint_start[k] = nk
+                        member_joint_end[k]   = nk + inode_xyz.shape[0] - 1
 
                     t_coarse = np.append(t_coarse, it_coarse)  
                     joints_xyz = np.append(joints_xyz, inode_xyz, axis=0)
@@ -1143,11 +1165,7 @@ class QBLADELoadCases(ExplicitComponent):
             floater_hydro_cdN = np.empty(0)
             floater_hydro_caN = np.empty(0)
             floater_hydro_cpN = np.empty(0) 
-            floater_hydro_cdA = np.array([float(qb_vt['QBladeOcean']['HydroCdA'])])
-            floater_hydro_caA = np.array([float(qb_vt['QBladeOcean']['HydroCaA'])])
-            floater_hydro_cpA = np.array([float(qb_vt['QBladeOcean']['HydroCpA'])])
             nfloater_hydro_coeffs = 0
-            cpn_default = float(qb_vt['QBladeOcean']['HydroCpN'])
 
             if modopt['flags']['floating'] and member_cd_reduced.shape[0] != n_members:
                 raise RuntimeError(
@@ -1155,17 +1173,15 @@ class QBLADELoadCases(ExplicitComponent):
                 )
 
             if qb_vt['QBladeOcean']['POTFLOW']:
-                if np.any(np.abs(member_ca_reduced) > 0.0):
+                if np.any(np.abs(member_ca_reduced) > 0.0) or np.any(np.abs(member_cp_reduced) > 0.0):
                     logger.warning(
-                        "QBladeOcean: POTFLOW=True, forcing member CaN to 0.0 to avoid double-counting added mass with radiation terms."
+                        "QBladeOcean: POTFLOW=True, forcing member CaN and CpN to 0.0 to avoid double-counting added mass with radiation terms."
                     )
-                if np.abs(floater_hydro_caA[0]) > 0.0:
-                    logger.warning(
-                        "QBladeOcean: POTFLOW=True, forcing global CaA baseline to 0.0 to avoid double-counting added mass with radiation terms."
-                    )
+
                 member_ca_reduced[:] = 0.0
+                member_cp_reduced[:] = 0.0
                 member_cay_reduced[elem_is_rect] = 0.0
-                floater_hydro_caA[0] = 0.0
+                #member_cpy_reduced[elem_is_rect] = 0.0
 
             # Separate dedup maps: circular members → HYDROMEMBERCOEFF (x-direction only)
             #                      rectangular members → HYDROMEMBERCOEFF_RECT (x + y direction)
@@ -1183,7 +1199,7 @@ class QBLADELoadCases(ExplicitComponent):
             for i in range(n_members):
                 cd_i  = float(member_cd_reduced[i])
                 ca_i  = float(member_ca_reduced[i])
-                cp_i  = cpn_default
+                cp_i  = float(member_cp_reduced[i])
                 cdy_i = float(member_cdy_reduced[i])
                 cay_i = float(member_cay_reduced[i])
                 if elem_is_rect[i]:
@@ -1268,35 +1284,34 @@ class QBLADELoadCases(ExplicitComponent):
             qb_vt['QBladeOcean']['ElmID'] = new_elm_ids
             qb_vt['QBladeOcean']['ElmRot'] = np.zeros_like(imembers)
 
-            # Build HYDROJOINTCOEFF arrays.  Start with zeros (or global override values),
-            # then overwrite endpoint joints of rectangular members with their Cay/Cdy values.
+            # Build HYDROJOINTCOEFF arrays from CdEnd/CaEnd geometry fields.
+            # End joints use CdEnd/CaEnd from the geometry yaml if provided, else zero.
             CdA_arr = np.zeros(n_joints)
             CaA_arr = np.zeros(n_joints)
             CpA_arr = np.zeros(n_joints)
-            CdA_arr[:] = floater_hydro_cdA[0]
-            CaA_arr[:] = floater_hydro_caA[0]
-            CpA_arr[:] = floater_hydro_cpA[0]
             warned_potflow_joint_ca = False
-            # Override endpoint joints of rectangular members with Cay/Cdy
+            wt_fp_members = self.options['wt_init']["components"]["floating_platform"]["members"]
             for k in range(n_member):
-                if modopt['floating']['members']['outer_shape'][k] == 'rectangular':
-                    j1_0 = rect_member_joint_start[k]  # 0-based index
-                    j2_0 = rect_member_joint_end[k]    # 0-based index
-                    i_cdy = inputs[f"member{k}:Cdy"]
-                    i_cay = inputs[f"member{k}:Cay"]
-                    CdA_arr[j1_0] = float(i_cdy[0])
-                    CdA_arr[j2_0] = float(i_cdy[-1])
-                    if qb_vt['QBladeOcean']['POTFLOW']:
-                        if (not warned_potflow_joint_ca) and (np.abs(float(i_cay[0])) > 0.0 or np.abs(float(i_cay[-1])) > 0.0):
-                            logger.warning(
-                                "QBladeOcean: POTFLOW=True, forcing joint CaA values from rectangular members to 0.0 to avoid double-counting added mass with radiation terms."
-                            )
-                            warned_potflow_joint_ca = True
-                        CaA_arr[j1_0] = 0.0
-                        CaA_arr[j2_0] = 0.0
-                    else:
-                        CaA_arr[j1_0] = float(i_cay[0])
-                        CaA_arr[j2_0] = float(i_cay[-1])
+                if k not in member_joint_start:
+                    continue
+                j1_0 = member_joint_start[k]  # 0-based index
+                j2_0 = member_joint_end[k]    # 0-based index
+                member_data = wt_fp_members[k]
+                cd_end_vals = member_data.get("CdEnd", [0.0, 0.0])
+                ca_end_vals = member_data.get("CaEnd", [0.0, 0.0])
+                CdA_arr[j1_0] = float(cd_end_vals[0])
+                CdA_arr[j2_0] = float(cd_end_vals[-1])
+                if qb_vt['QBladeOcean']['POTFLOW']:
+                    if (not warned_potflow_joint_ca) and (np.abs(float(ca_end_vals[0])) > 0.0 or np.abs(float(ca_end_vals[-1])) > 0.0):
+                        logger.warning(
+                            "QBladeOcean: POTFLOW=True, forcing joint CaA values to 0.0 to avoid double-counting added mass with radiation terms."
+                        )
+                        warned_potflow_joint_ca = True
+                    CaA_arr[j1_0] = 0.0
+                    CaA_arr[j2_0] = 0.0
+                else:
+                    CaA_arr[j1_0] = float(ca_end_vals[0])
+                    CaA_arr[j2_0] = float(ca_end_vals[-1])
             has_joint_coeffs = np.any(CdA_arr != 0) or np.any(CaA_arr != 0) or np.any(CpA_arr != 0)
             if has_joint_coeffs:
                 qb_vt['QBladeOcean']['AxHyCoID']  = ijoints

@@ -183,7 +183,14 @@ properties:
                     description: Ensure that equilibrium point of the TMD is at `location` by offseting the location based on the spring constant
                     type: boolean
                     default: True
-
+    components:
+        properties:
+            floating_platform:
+                properties:
+                    members:
+                        optional:
+                            - CaEnd
+                            - CdEnd
                 
 
         

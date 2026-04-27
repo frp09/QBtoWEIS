@@ -1164,22 +1164,78 @@ properties:
                         type: boolean
                         default: False 
                         description: weather to override the strip theory coefficients defined in the windIO file and replace them with a global value for each member
-                    HydroCdN: &hydro
-                        type: number
-                        minimum: 0.0
-                        maximum: 100.0
-                        default: 1.0
-                        description: Simple strip theory model coefficient, default of 1.0
-                    HydroCaN: *hydro
-                    HydroCpN: *hydro
-                    HydroCdA: &hydro_0
-                        type: number
-                        minimum: 0.0
-                        maximum: 100.0
-                        default: 0.0
-                        description: Simple strip theory model coefficient, default of 0.0
-                    HydroCaA: *hydro_0
-                    HydroCpA: *hydro_0
+                    HydroCdN:
+                        type: object
+                        default: {}
+                        description: "Per-member normal drag coefficient, {member_name: [x_val, y_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
+                    HydroCaN:
+                        type: object
+                        default: {}
+                        description: "Per-member normal added-mass coefficient, {member_name: [x_val, y_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
+                    HydroCpN:
+                        type: object
+                        default: {}
+                        description: "Per-member normal pressure coefficient, {member_name: [x_val, y_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
+                    HydroCdNy:
+                        type: object
+                        default: {}
+                        description: "Per-member y-direction normal drag coefficient (rectangular members only), {member_name: [start_val, end_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
+                    HydroCaNy:
+                        type: object
+                        default: {}
+                        description: "Per-member y-direction normal added-mass coefficient (rectangular members only), {member_name: [start_val, end_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
+                    HydroCpNy:
+                        type: object
+                        default: {}
+                        description: "Per-member y-direction normal pressure coefficient (rectangular members only), {member_name: [start_val, end_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
+                    HydroCdA:
+                        type: object
+                        default: {}
+                        description: "Per-member axial drag coefficient, {member_name: [start_joint_val, end_joint_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
+                    HydroCaA:
+                        type: object
+                        default: {}
+                        description: "Per-member axial added-mass coefficient, {member_name: [start_joint_val, end_joint_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
+                    HydroCpA:
+                        type: object
+                        default: {}
+                        description: "Per-member axial pressure coefficient, {member_name: [start_joint_val, end_joint_val]}; used when override_morison_coefficients is True"
+                        additionalProperties:
+                            type: array
+                            items:
+                                type: number
                     MCFC:
                         type: integer
                         default: 0
