@@ -184,13 +184,45 @@ class InputWriter_QBlade(object):
         object_length = 60
         keyword_length = 15
 
+        def checkPlr(alpha, cl, cd, cm, polar_idx, tab_idx):
+
+            # helper function to perfrom final "cleanup" of airfoil data
+            
+            if alpha[0] != -180.:
+                print(f'Airfoil {polar_idx}, tab {tab_idx}: min AoA != -180°, fixing.')
+                alpha[0] = -180.
+            if alpha[-1] != 180.:
+                print(f'Airfoil {polar_idx}, tab {tab_idx}: max AoA != 180°, fixing.')
+                alpha[-1] = 180.
+            if cl[0] != cl[-1]:
+                cl[0] = cl[-1]
+            if cd[0] != cd[-1]:
+                cd[0] = cd[-1]
+            if cm[0] != cm[-1]:
+                cm[0] = cm[-1]
+
+            if self.qb_vt['Aero']['InCol_Cm'] == 0:
+                cm = np.zeros_like(cl)
+
+            return alpha, cl, cd, cm
+
         for polar in range(self.qb_vt['Aero']['NumPlrFiles']):
             self.qb_vt['Aero']['PlrNames'][polar] = os.path.join('Aero', self.QBLADE_namingOut + '_polar_%02d.plr'%polar)
             plr_file = os.path.join(self.turbine_directory, self.qb_vt['Aero']['PlrNames'][polar])
             
             with open(plr_file, 'w') as f:
                 
-                tab = 0 # for now only one airfoil table 
+                # for now function assumes that different tabs are related to different REynolds numbers only. 
+                # no testing if the airfoil tables are related to other custom properties
+
+                n_tabs = len(self.qb_vt['Aero']['af_data'][polar])
+
+                Re_list = [
+                    self.qb_vt['Aero']['af_data'][polar][tab]['Re']
+                    for tab in range(len(self.qb_vt['Aero']['af_data'][polar]))
+                ]
+
+                Re_str = ' '.join(['{: .6e}'.format(Re) for Re in Re_list])
 
                 f.write('---------------------------------------- Polar file generated with WEIS QBlade API ----------------------------------\n\n')
                 f.write('---------------------------------------- Object Names ----------------------------------\n')
@@ -200,48 +232,58 @@ class InputWriter_QBlade(object):
 
                 f.write('---------------------------------------- Parameters ----------------------------------\n')
                 f.write(f"{self.qb_vt['Aero']['rthick'][polar]*100.:<{object_length}}{' THICKNESS':<{keyword_length}} - the thickness of the corresponding airfoil\n")
-                f.write(f"{0:<{object_length}}{' ISDECOMPOSED':<{keyword_length}} - is the polar decomposed (add Cl_Sep, Cl_att and f_st columns)\n") # for now not possible
-                f.write(f"{'REYNOLDS            '}{'{: .6e}'.format(self.qb_vt['Aero']['af_data'][polar][tab]['Re']):<{20}} - the Reynolds number for the imported polar\n") # for now only one is possible not possible
-                # f.write(f"{str(self.qb_vt['Aero']['airfoils_Re']):<{object_length}}{' REYNOLDS':<{keyword_length}} - the list of Reynolds numbers for the imported polars)\n")
+                f.write(f"{0:<{object_length}}{' ISDECOMPOSED':<{keyword_length}} - is the polar decomposed (add Cl_Sep, Cl_att and f_st columns)\n") # for now not possible                                                                                                                                                                                                                       
+                f.write(f"{'REYNOLDS':<{object_length}}{Re_str} - Reynolds numbers for the imported polars\n")
                 f.write('\n')
 
                 f.write('---------------------------------------- Polar Data ----------------------------------\n')
-                f.write('AOA [deg]        CL [-]          CD [-]          CM [-]\n')
-                polar_map = [self.qb_vt['Aero']['InCol_Alfa'], self.qb_vt['Aero']['InCol_Cl'], self.qb_vt['Aero']['InCol_Cd'], self.qb_vt['Aero']['InCol_Cm']]
-                # polar_map.remove(0)
-                polar_map = [i-1 for i in polar_map]
-
                 
-                alpha = np.asarray(self.qb_vt['Aero']['af_data'][polar][tab]['Alpha'])
-                cl = np.asarray(self.qb_vt['Aero']['af_data'][polar][tab]['Cl'])
-                cd = np.asarray(self.qb_vt['Aero']['af_data'][polar][tab]['Cd'])
-                cm = np.asarray(self.qb_vt['Aero']['af_data'][polar][tab]['Cm'])
+                alpha_ref = np.asarray(self.qb_vt['Aero']['af_data'][polar][0]['Alpha'])
+                CL_all = []
+                CD_all = []
+                CM_all = []
 
-                if alpha[0] != -180.:
-                    print('Airfoil number ' + str(polar) + ' tab number ' + str(tab) + ' has the min angle of attack different than -180 deg, and equal to ' + str(alpha[0]) + ' deg. This is changed to -180 deg now.')
-                    alpha[0] = -180.
-                if alpha[-1] != 180.:
-                    print('Airfoil number ' + str(polar) + ' tab number ' + str(tab) + ' has the max angle of attack different than 180 deg, and equal to ' + str(alpha[0]) + ' deg. This is changed to 180 deg now.')
-                    alpha[-1] = 180.
-                if cl[0] != cl[-1]:
-                    print('Airfoil number ' + str(polar) + ' tab number ' + str(tab) + ' has the lift coefficient different between +-180 deg. This is changed to be the same now.')
-                    cl[0] = cl[-1]
-                if cd[0] != cd[-1]:
-                    print('Airfoil number ' + str(polar) + ' tab number ' + str(tab) + ' has the drag coefficient different between +-180 deg. This is changed to be the same now.')
-                    cd[0] = cd[-1]
-                if cm[0] != cm[-1]:
-                    print('Airfoil number ' + str(polar) + ' tab number ' + str(tab) + ' has the moment coefficient different between +-180 deg. This is changed to be the same now.')
-                    cm[0] = cm[-1]
+                for itab in range(n_tabs):
 
-                if self.qb_vt['Aero']['InCol_Cm'] == 0:
-                    cm = np.zeros_like(cl)
+                    alpha_tab = np.asarray(self.qb_vt['Aero']['af_data'][polar][itab]['Alpha'])
+                    cl = np.asarray(self.qb_vt['Aero']['af_data'][polar][itab]['Cl'])
+                    cd = np.asarray(self.qb_vt['Aero']['af_data'][polar][itab]['Cd'])
+                    cm = np.asarray(self.qb_vt['Aero']['af_data'][polar][itab]['Cm'])
 
-                polar = np.column_stack((alpha, cl, cd, cm))
-                polar = polar[:,polar_map]
+                    # Interpolate onto reference AoA if needed
+                    if not np.array_equal(alpha_tab, alpha_ref):
+                        cl = np.interp(alpha_ref, alpha_tab, cl)
+                        cd = np.interp(alpha_ref, alpha_tab, cd)
+                        cm = np.interp(alpha_ref, alpha_tab, cm)
 
-                for row in polar:
-                    f.write(' '.join(['{: .8e}'.format(val) for val in row])+'\n') 
+                    alpha_chk, cl, cd, cm = checkPlr(alpha_ref.copy(), cl, cd, cm, polar, itab)                                                                                  
 
+                    if itab == 0:
+                        alpha_ref = alpha_chk
+
+                    CL_all.append(cl)
+                    CD_all.append(cd)
+                    CM_all.append(cm)
+
+                # Start with AoA
+                polar_matrix = [alpha_ref]
+
+                # Append CL, CD, CM for each Reynolds
+                for itab in range(n_tabs):
+                    polar_matrix.extend([CL_all[itab], CD_all[itab], CM_all[itab]])
+
+                # Convert to (n_alpha, n_columns)
+                polar_matrix = np.column_stack(polar_matrix)
+
+                header = f"{'AOA [deg]':>12}"
+                for Re in Re_list:
+                    header += f"{'CL [-]':>14}{'CD [-]':>14}{'CM [-]':>14}"
+
+                f.write(header + '\n')
+
+                for row in polar_matrix:
+                    f.write(' '.join(['{: .8e}'.format(val) for val in row]) + '\n')
+                
     def write_main_file(self):
         # Write main file
         # self.write_qblade_input()
@@ -682,7 +724,7 @@ class InputWriter_QBlade(object):
             f.write(f"{str(self.qb_vt['QBladeOcean']['ISFLOATING']):<{object_length}}{'ISFLOATING':<{keyword_length}} - if the structure is fixed the joint coordinates are assigned in a coordinate system with O(0,0,0) at the mudline, for floaters O(0,0,0) is at the MSL and marks the floaters's NP\n")
             f.write(f"{str(self.qb_vt['QBladeOcean']['WATERDENSITY']):<{object_length}}{'WATERDENSITY':<{keyword_length}} -design density, used in flooded member mass calculations\n")
             f.write(f"{str(self.qb_vt['QBladeOcean']['WAVEKINEVAL_MOR']):<{object_length}}{'WAVEKINEVAL_MOR':<{keyword_length}} - 0 - local evaluation, 1 - eval at fixed ref pos, 2 - eval at lagged position\n")
-            f.write(f"{str(self.qb_vt['QBladeOcean']['WAVEKINEVAL_POT']):<{object_length}}{'WAVEKINEVAL_MOR':<{keyword_length}} - 0 - local evaluation, 1 - eval at fixed ref pos, 2 - eval at lagged position\n")
+            f.write(f"{str(self.qb_vt['QBladeOcean']['WAVEKINEVAL_POT']):<{object_length}}{'WAVEKINEVAL_POT':<{keyword_length}} - 0 - local evaluation, 1 - eval at fixed ref pos, 2 - eval at lagged position\n")
             f.write(f"{str(self.qb_vt['QBladeOcean']['WAVEKINTAU']):<{object_length}}{'WAVEKINTAU':<{keyword_length}} - time constant for the lagged waveKin position evaluation\n")
             if self.qb_vt['QBladeOcean']['USEADVANCEDBUOYANCY']:
                 f.write(f"{str(self.qb_vt['QBladeOcean']['ADVANCEDBUOYANCY']):<{object_length}}{'ADVANCEDBUOYANCY':<{keyword_length}} - using an advanced discretization technique (N must be a square int number) to calculate buoyancy of partially submerged members, especially usefull if \"lying\" cylinders are used to generate the draft\n")
@@ -797,6 +839,18 @@ class InputWriter_QBlade(object):
                     f.write(" ".join(ln) + '\n')
                 f.write('\n')
 
+            if 'NElementsRigidRect' in self.qb_vt['QBladeOcean']:
+                f.write('SUBELEMENTSRIGID_RECT\n')
+                f.write('ElemID     BMASSD     XDIM       YDIM       DIAMETER\n')
+                for i in range(len(self.qb_vt['QBladeOcean']['NElementsRigidRect'])):
+                    ln = []
+                    ln.append('{:<10d}'.format(self.qb_vt['QBladeOcean']['ElemID_rect'][i]))
+                    ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['MASSD_rect'][i]))
+                    ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['SIDE_B'][i]))      # XDIM = side_length_b
+                    ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['SIDE_A'][i]))      # YDIM = side_length_a
+                    ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['DIAMETER_rect'][i]))
+                    f.write(" ".join(ln) + '\n')
+                f.write('\n')
             if 'NElements' in self.qb_vt['QBladeOcean']: # only write this table in case flexible members were defined
                 f.write('SUBELEMENTS\n')
                 f.write('ElemID     MASS_[kg/m]     Eix_[N.m^2]   EA_[N]   GJ_[N.m^2]   STRPIT_[deg]    KSX_[-] KSY_[-]   RGX_[-]  RGY_[-]  XCM_[-]  YCM_[-]  YCE_[-]  XCS_[-]  YCS_[-]  DIA_[m]  DAMP[-]\n')
@@ -848,12 +902,13 @@ class InputWriter_QBlade(object):
             f.write('MemID   Jnt1ID  Jnt2ID  ElmID   ElmRot  HyCoID  IsBuoy  MaGrID  FldArea ElmDsc Name (optional)\n')
             for i in range(self.qb_vt['QBladeOcean']['NSubMembers']):
                 ln = []
+                hycoid_key = 'HyCoID_submem' if 'HyCoID_submem' in self.qb_vt['QBladeOcean'] else 'HyCoID'
                 ln.append('{:<7d}'.format(self.qb_vt['QBladeOcean']['MemID'][i]))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['Jnt1ID'][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['Jnt2ID'][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['ElmID'][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['ElmRot'][i])))
-                ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['HyCoID'][i])))
+                ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean'][hycoid_key][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['IsBuoy'][i])))
                 ln.append('{:<7d}'.format(int(self.qb_vt['QBladeOcean']['MaGrID'][i])))
                 ln.append('{:<7d}'.format(self.qb_vt['QBladeOcean']['FldArea'][i]))
@@ -876,6 +931,24 @@ class InputWriter_QBlade(object):
                 f.write(" ".join(ln) + '\n')
             f.write('\n')
 
+            if 'NElementsRigidRect' in self.qb_vt['QBladeOcean']:
+                f.write('HYDROMEMBERCOEFF_RECT\n')
+                f.write('CoeffID CdNx    CaNx    CpNx    CdNy    CaNy    CpNy    MCFC    CdAx*   f_c*    alpha*\n')
+                for i in range(len(self.qb_vt['QBladeOcean']['CoeffID_rect'])):
+                    ln = []
+                    ln.append('{:<7d}'.format(self.qb_vt['QBladeOcean']['CoeffID_rect'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCdNx'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCaNx'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCpNx'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCdNy'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCaNy'][i]))
+                    ln.append('{:.2f}'.format(self.qb_vt['QBladeOcean']['HydroCpNy'][i]))
+                    ln.append('{}'.format(self.qb_vt['QBladeOcean']['MCFC_rect'][i]))
+                    ln.append('{:.2f}'.format(0.0)) # Placeholder for CdAx
+                    ln.append('{:.2f}'.format(0.0)) # Placeholder for f_c
+                    ln.append('{:.2f}'.format(0.0)) # Placeholder for alpha
+                    f.write(" ".join(ln) + '\n')
+                f.write('\n')
             f.write('HYDROJOINTCOEFF\n')
             f.write('CoeffID JointID CdA CaA CpA\n')
             for i in range(len(self.qb_vt['QBladeOcean']['AxHyCoID'])):

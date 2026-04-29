@@ -33,7 +33,7 @@ import wisdem.commonse.utilities              as util
 from wisdem.rotorse.rotor_power             import eval_unsteady
 from wisdem.floatingse.floating_frame import NULL, NNODES_MAX, NELEM_MAX
 from weis.dlc_driver.dlc_generator    import DLCGenerator
-from weis.dlc_driver.dlc_generator    import DLCInstance
+from weis.dlc_driver.dlc_generator    import DLCInstance, get_dlc_label_for_aep
 from weis.aeroelasticse.CaseGen_General import CaseGen_General
 from functools import partial
 from pCrunch import PowerProduction
@@ -238,16 +238,22 @@ class QBLADELoadCases(ExplicitComponent):
                 n_member = modopt["floating"]["members"]["n_members"]
                 for k in range(n_member):
                     n_height_mem = modopt["floating"]["members"]["n_height"][k]
+                    outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
                     self.add_input(f"member{k}:joint1", np.zeros(3), units="m")
                     self.add_input(f"member{k}:joint2", np.zeros(3), units="m")
-                    self.add_input(f"member{k}:Cd", 0)
-                    self.add_input(f"member{k}:Ca", 0)
+                    self.add_input(f"member{k}:Cd", np.zeros(n_height_mem))
+                    self.add_input(f"member{k}:Ca", np.zeros(n_height_mem))
                     self.add_input(f"member{k}:s", np.zeros(n_height_mem))
                     self.add_input(f"member{k}:s_ghost1", 0.0)
                     self.add_input(f"member{k}:s_ghost2", 0.0)
-                    self.add_input(f"member{k}:outer_diameter", np.zeros(n_height_mem), units="m")
+                    if outer_shape_k == "rectangular":
+                        self.add_input(f"member{k}:side_length_a", np.zeros(n_height_mem), units="m")
+                        self.add_input(f"member{k}:side_length_b", np.zeros(n_height_mem), units="m")
+                        self.add_input(f"member{k}:Cay", np.zeros(n_height_mem))
+                        self.add_input(f"member{k}:Cdy", np.zeros(n_height_mem))
+                    else:
+                        self.add_input(f"member{k}:outer_diameter", np.zeros(n_height_mem), units="m")
                     self.add_input(f"member{k}:wall_thickness", np.zeros(n_height_mem-1), units="m")
-            
             # Blade composit layup info (used for fatigue analysis)
             self.add_input('sc_ss_mats',   val=np.zeros((n_span, n_mat)),        desc="spar cap, suction side,  boolean of materials in each composite layer spanwise, passed as floats for differentiablity, used for Fatigue Analysis")
             self.add_input('sc_ps_mats',   val=np.zeros((n_span, n_mat)),        desc="spar cap, pressure side, boolean of materials in each composite layer spanwise, passed as floats for differentiablity, used for Fatigue Analysis")
@@ -259,6 +265,7 @@ class QBLADELoadCases(ExplicitComponent):
             if self.options["modeling_options"]["flags"]["mooring"]:
                 n_nodes = mooropt["n_nodes"]
                 n_lines = mooropt["n_lines"]
+                self.add_input('mooring_MBL',                   val=np.zeros(n_lines), units='N')
                 self.add_input('line_diameter',                 val=np.zeros(n_lines), units='m')
                 self.add_input('line_mass_density',             val=np.zeros(n_lines), units='kg/m')
                 self.add_input('line_stiffness',                val=np.zeros(n_lines), units='N')
@@ -417,6 +424,14 @@ class QBLADELoadCases(ExplicitComponent):
         self.add_output('Std_PtfmPitch',        val=0.0,                    units='deg',    desc='standard deviation of platform pitch angle')
         self.add_output('Max_Offset',           val=0.0,                    units='m',      desc='Maximum distance in surge/sway direction')
         self.add_output('Mean_PtfmPitch',       val=0.0,                                    desc='Maximum of mean platform pitch angles over a set of QBlade simulations')
+
+        # Mooring line outputs
+        self.add_output('Max_MoorLineTension1',    val=0.0,                    units='N',      desc='Maximum tension in mooring line 1')
+        self.add_output('Max_MoorLineTension2',    val=0.0,                    units='N',      desc='Maximum tension in mooring line 2')
+        self.add_output('Max_MoorLineTension3',    val=0.0,                    units='N',      desc='Maximum tension in mooring line 3')    
+        self.add_output('moor_axial_load_ratio1',  val=0.0,                    units='N',      desc='Maximum axial load in mooring line 1')
+        self.add_output('moor_axial_load_ratio2',  val=0.0,                    units='N',      desc='Maximum axial load in mooring line 2')
+        self.add_output('moor_axial_load_ratio3',  val=0.0,                    units='N',      desc='Maximum axial load in mooring line 3')
 
         # Fatigue output
         self.add_output('damage_blade_root_sparU',  val=0.0, desc="Miner's rule cumulative damage to upper spar cap at blade root")
@@ -930,12 +945,66 @@ class QBLADELoadCases(ExplicitComponent):
                 t_coarse = np.array([])
                 subconstraint_TP = np.array([])
                 members_name = []
-
+                # Rectangular member accumulators
+                side_a_coarse = np.array([])
+                side_b_coarse = np.array([])
+                diam_rect_coarse = np.array([])
+                elem_is_rect = np.array([], dtype=bool)
+                member_joint_start = {}  # k -> 0-based joint index of first node (all members)
+                member_joint_end   = {}  # k -> 0-based joint index of last node (all members)
+                member_cd_reduced = np.array([])
+                member_ca_reduced = np.array([])
+                member_cp_reduced = np.array([])
+                member_cdy_reduced = np.array([])
+                member_cay_reduced = np.array([])
+                member_cpy_reduced = np.array([])
+                
+                
                 # Look over members and grab all nodes and internal connections
                 n_member = modopt["floating"]["members"]["n_members"]
                 for k in range(n_member):
-                    s_grid = inputs[f"member{k}:s"]         
-                    idiam = inputs[f"member{k}:outer_diameter"]
+                    outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
+                    name = modopt["floating"]["members"]["name"][k]
+
+                    s_grid = inputs[f"member{k}:s"]
+                    i_cd = np.atleast_1d(inputs[f"member{k}:Cd"])
+                    i_ca = np.atleast_1d(inputs[f"member{k}:Ca"])
+
+                    if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                        cd0 = float(qb_vt['QBladeOcean']['HydroCdN'][name][0])
+                        ca0 = float(qb_vt['QBladeOcean']['HydroCaN'][name][0])
+                        cp0 = float(qb_vt['QBladeOcean'].get('HydroCpN', {}).get(name, [0.0, 0.0])[0])
+                    else:
+                        cd0 = float(i_cd[0])
+                        ca0 = float(i_ca[0])
+                        cp0 = 1.0   # default cp = 1
+                        if i_cd.size > 1 and not np.allclose(i_cd, cd0):
+                            logger.warning(
+                                f"QBladeOcean: member{k}:Cd varies along member length; using first value ({cd0}) for HYDROMEMBERCOEFF mapping."
+                            )
+                        if i_ca.size > 1 and not np.allclose(i_ca, ca0):
+                            logger.warning(
+                                f"QBladeOcean: member{k}:Ca varies along member length; using first value ({ca0}) for HYDROMEMBERCOEFF mapping."
+                            )
+
+                    # if the member is rectangular also assign coefficients in the y-direction    
+                    if outer_shape_k == "rectangular":
+                        i_side_a = inputs[f"member{k}:side_length_a"]
+                        i_side_b = inputs[f"member{k}:side_length_b"]
+                        idiam = np.maximum(i_side_a, i_side_b)  # use max dimension as reference for grid generation
+                        if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                            cdy0 = float(qb_vt['QBladeOcean'].get('HydroCdNy', {}).get(name, [0.0, 0.0])[0])
+                            cay0 = float(qb_vt['QBladeOcean'].get('HydroCaNy', {}).get(name, [0.0, 0.0])[0])
+                            cpy0 = float(qb_vt['QBladeOcean'].get('HydroCpNy', {}).get(name, [cp0, cp0])[0])
+                        else:
+                            i_cdy = np.atleast_1d(inputs[f"member{k}:Cdy"])
+                            i_cay = np.atleast_1d(inputs[f"member{k}:Cay"])
+                            cdy0 = float(i_cdy[0])
+                            cay0 = float(i_cay[0])
+                            cpy0 = cp0  # no separate y-direction pressure in geometry; mirror x-direction value
+
+                    else:
+                        idiam = inputs[f"member{k}:outer_diameter"]
                     s_coarse = make_coarse_grid(s_grid, idiam)
                     s_coarse = np.unique( np.minimum( np.maximum(s_coarse, inputs[f"member{k}:s_ghost1"]), inputs[f"member{k}:s_ghost2"]) )
                     id_coarse = np.interp(s_coarse, s_grid, idiam)
@@ -1003,7 +1072,43 @@ class QBLADELoadCases(ExplicitComponent):
                     nk = joints_xyz.shape[0]
                     N1 = np.append(N1, nk + inode_range + 1)
                     N2 = np.append(N2, nk + inode_range + 2)
-                    d_coarse = np.append(d_coarse, id_coarse) 
+                    n_new_elems = len(inode_range)
+
+                    member_cd_reduced = np.append(member_cd_reduced, np.full(n_new_elems, cd0))
+                    member_ca_reduced = np.append(member_ca_reduced, np.full(n_new_elems, ca0))
+                    member_cp_reduced = np.append(member_cp_reduced, np.full(n_new_elems, cp0))
+                    if outer_shape_k == "rectangular":
+                        member_cdy_reduced = np.append(member_cdy_reduced, np.full(n_new_elems, cdy0))
+                        member_cay_reduced = np.append(member_cay_reduced, np.full(n_new_elems, cay0))
+                        member_cpy_reduced = np.append(member_cpy_reduced, np.full(n_new_elems, cpy0))
+                    else:
+                        member_cdy_reduced = np.append(member_cdy_reduced, np.full(n_new_elems, cd0))
+                        member_cay_reduced = np.append(member_cay_reduced, np.full(n_new_elems, ca0))
+                        member_cpy_reduced = np.append(member_cpy_reduced, np.full(n_new_elems, cp0))
+
+
+                    if outer_shape_k == "rectangular":
+                        # Interpolate side_a and side_b at node positions along the member
+                        s_nodes = np.linspace(0.0, 1.0, inode_xyz.shape[0])
+                        ia_nodes = np.interp(s_nodes, s_grid, i_side_a)
+                        ib_nodes = np.interp(s_nodes, s_grid, i_side_b)
+                        ia_elems = (ia_nodes[:-1] + ia_nodes[1:]) / 2
+                        ib_elems = (ib_nodes[:-1] + ib_nodes[1:]) / 2
+                        side_a_coarse    = np.append(side_a_coarse,    ia_elems)
+                        side_b_coarse    = np.append(side_b_coarse,    ib_elems)
+                        diam_rect_coarse = np.append(diam_rect_coarse, np.sqrt((ia_elems*ib_elems)/np.pi)*2)#   np.maximum(ia_elems, ib_elems))
+                        elem_is_rect     = np.append(elem_is_rect,     np.ones(n_new_elems, dtype=bool))
+                        d_coarse         = np.append(d_coarse,         np.zeros(n_new_elems))  # placeholder
+                        member_joint_start[k] = nk
+                        member_joint_end[k]   = nk + inode_xyz.shape[0] - 1
+                    else:
+                        d_coarse      = np.append(d_coarse,      id_coarse)
+                        side_a_coarse = np.append(side_a_coarse, np.zeros(n_new_elems))
+                        side_b_coarse = np.append(side_b_coarse, np.zeros(n_new_elems))
+                        diam_rect_coarse = np.append(diam_rect_coarse, np.zeros(n_new_elems))
+                        elem_is_rect  = np.append(elem_is_rect,  np.zeros(n_new_elems, dtype=bool))
+                        member_joint_start[k] = nk
+                        member_joint_end[k]   = nk + inode_xyz.shape[0] - 1
                     t_coarse = np.append(t_coarse, it_coarse)  
                     joints_xyz = np.append(joints_xyz, inode_xyz, axis=0)
 
@@ -1068,53 +1173,182 @@ class QBLADELoadCases(ExplicitComponent):
             # Hydro Coefficients floater    
             floater_hydro_cdN = np.empty(0)
             floater_hydro_caN = np.empty(0)
-            floater_hydro_cpN = np.empty(0) 
-            floater_hydro_cdA = np.empty(0)   
-            floater_hydro_caA = np.empty(0)
-            floater_hydro_cpA = np.empty(0)
+            floater_hydro_cpN = np.empty(0)      
             nfloater_hydro_coeffs = 0
 
-            # if 1 global hydro coefficient is set by the user, it is used for all members
-            if qb_vt['QBladeOcean']['override_morison_coefficients']:
-                floater_hydro_cdN = np.append(floater_hydro_cdN, qb_vt['QBladeOcean']['HydroCdN'])
-                floater_hydro_caN = np.append(floater_hydro_caN, qb_vt['QBladeOcean']['HydroCaN'])
-                floater_hydro_cpN = np.append(floater_hydro_cpN, qb_vt['QBladeOcean']['HydroCpN'])    
-                floater_hydro_cdA = np.append(floater_hydro_cdA, qb_vt['QBladeOcean']['HydroCdA'])
-                floater_hydro_caA = np.append(floater_hydro_caA, qb_vt['QBladeOcean']['HydroCaA'])
-                floater_hydro_cpA = np.append(floater_hydro_cpA, qb_vt['QBladeOcean']['HydroCpA'])   
-                nfloater_hydro_coeffs = 1    
+            if modopt['flags']['floating'] and member_cd_reduced.shape[0] != n_members:
+                raise RuntimeError(
+                    f"QBladeOcean: member coefficient bookkeeping mismatch (n_members={n_members}, cd_entries={member_cd_reduced.shape[0]})."
+                )
+
+            if qb_vt['QBladeOcean']['POTFLOW']:
+                if np.any(np.abs(member_ca_reduced) > 0.0) or np.any(np.abs(member_cp_reduced) > 0.0):
+                    logger.warning(
+                        "QBladeOcean: POTFLOW=True, forcing member CaN and CpN to 0.0 to avoid double-counting added mass with radiation terms."
+                    )
+
+                member_ca_reduced[:] = 0.0
+                member_cp_reduced[:] = 0.0
+                member_cay_reduced[elem_is_rect] = 0.0
+                member_cpy_reduced[elem_is_rect] = 0.0
+
+            # Separate dedup maps: circular members → HYDROMEMBERCOEFF (x-direction only)
+            #                      rectangular members → HYDROMEMBERCOEFF_RECT (x + y direction)
+            floater_hydro_rect_cdNx = np.empty(0)
+            floater_hydro_rect_caNx = np.empty(0)
+            floater_hydro_rect_cpNx = np.empty(0)
+            floater_hydro_rect_cdNy = np.empty(0)
+            floater_hydro_rect_caNy = np.empty(0)
+            floater_hydro_rect_cpNy = np.empty(0)
+
+            circ_coeff_map = {}
+            rect_coeff_map = {}
+            hycoid = np.zeros(n_members, dtype=np.int_)
+            hycoid_rect = np.zeros(n_members, dtype=np.int_)
+            for i in range(n_members):
+                cd_i  = float(member_cd_reduced[i])
+                ca_i  = float(member_ca_reduced[i])
+                cp_i  = float(member_cp_reduced[i])
+                cdy_i = float(member_cdy_reduced[i])
+                cay_i = float(member_cay_reduced[i])
+                cpy_i = float(member_cpy_reduced[i])
+                if elem_is_rect[i]:
+                    key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8),
+                           round(cdy_i, 8), round(cay_i, 8), round(cpy_i, 8))
+                    if key not in rect_coeff_map:
+                        rect_coeff_map[key] = len(floater_hydro_rect_cdNx) + 1
+                        floater_hydro_rect_cdNx = np.append(floater_hydro_rect_cdNx, cd_i)
+                        floater_hydro_rect_caNx = np.append(floater_hydro_rect_caNx, ca_i)
+                        floater_hydro_rect_cpNx = np.append(floater_hydro_rect_cpNx, cp_i)
+                        floater_hydro_rect_cdNy = np.append(floater_hydro_rect_cdNy, cdy_i)
+                        floater_hydro_rect_caNy = np.append(floater_hydro_rect_caNy, cay_i)
+                        floater_hydro_rect_cpNy = np.append(floater_hydro_rect_cpNy, cpy_i)
+                    hycoid_rect[i] = rect_coeff_map[key]
+                    hycoid[i] = 0  # not used in HYDROMEMBERCOEFF for rect members
+                else:
+                    key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8))
+                    if key not in circ_coeff_map:
+                        circ_coeff_map[key] = len(floater_hydro_cdN) + 1
+                        floater_hydro_cdN = np.append(floater_hydro_cdN, cd_i)
+                        floater_hydro_caN = np.append(floater_hydro_caN, ca_i)
+                        floater_hydro_cpN = np.append(floater_hydro_cpN, cp_i)
+                    hycoid[i] = circ_coeff_map[key]
+                    hycoid_rect[i] = 0  # not used in HYDROMEMBERCOEFF_RECT for circ members
+            qb_vt['QBladeOcean']['HyCoID'] = hycoid
+            qb_vt['QBladeOcean']['HyCoID_rect'] = hycoid_rect
+            nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
+            # SUBMEMBERS HyCoID offset is deferred until after mooring coefficients are
+            # concatenated (ncoefficients). Store raw hycoid_rect (1-based within rect table)
+            # for now; the final shift is applied after the Hydrodynamic Coefficients block.
+            hycoid_submem = np.where(elem_is_rect, hycoid_rect, hycoid).astype(np.int_)
+            qb_vt['QBladeOcean']['HyCoID_submem'] = hycoid_submem
 
             qb_vt['QBladeOcean']['NJoints'] = n_joints
             qb_vt['QBladeOcean']['JointID'] = ijoints
             qb_vt['QBladeOcean']['Jointxi'] = joints_xyz[:,0]
             qb_vt['QBladeOcean']['Jointyi'] = joints_xyz[:,1]
             qb_vt['QBladeOcean']['Jointzi'] = joints_xyz[:,2]
-            if not 'NElements' in qb_vt['QBladeOcean']: # if flexible members were defined we don't want to assign regid members as well, #TODO: should both be possible?
-                qb_vt['QBladeOcean']['NElementsRigid'] = imembers
-                qb_vt['QBladeOcean']['DIAMETER'] = d_coarse # members have constant diameters in QBlade
-            qb_vt['QBladeOcean']['ElemID'] = imembers
-            qb_vt['QBladeOcean']['MASSD'] = np.ones(n_members) * 0.0001 # no distributed mass for now, set tiny mass to not confuse QBladeOcean
+
+            # Split elements into circular and rectangular.  Circular elements get ElemIDs
+            # 1..n_circ; rectangular elements get (n_circ+1)..(n_circ+n_rect).  This ensures
+            # unique, contiguous IDs across SUBELEMENTSRIGID and SUBELEMENTSRIGID_RECT.
+            n_circ_elems = int(np.sum(~elem_is_rect))
+            n_rect_elems = int(np.sum(elem_is_rect))
+            new_elm_ids = np.zeros(n_members, dtype=np.int_)
+            if n_circ_elems > 0:
+                new_elm_ids[~elem_is_rect] = np.arange(1, n_circ_elems + 1, dtype=np.int_)
+            if n_rect_elems > 0:
+                new_elm_ids[elem_is_rect] = np.arange(n_circ_elems + 1, n_circ_elems + n_rect_elems + 1, dtype=np.int_)
+
+            if not 'NElements' in qb_vt['QBladeOcean']: # if flexible members were defined we don't want to assign rigid members as well, #TODO: should both be possible?
+                if n_circ_elems > 0:
+                    circ_elem_ids = np.arange(1, n_circ_elems + 1, dtype=np.int_)
+                    qb_vt['QBladeOcean']['NElementsRigid'] = circ_elem_ids
+                    qb_vt['QBladeOcean']['ElemID']         = circ_elem_ids
+                    qb_vt['QBladeOcean']['DIAMETER']       = d_coarse[~elem_is_rect]
+                    qb_vt['QBladeOcean']['MASSD']          = np.ones(n_circ_elems) * 0.0001
+            if n_rect_elems > 0:
+                rect_elem_ids = np.arange(n_circ_elems + 1, n_circ_elems + n_rect_elems + 1, dtype=np.int_)
+                qb_vt['QBladeOcean']['NElementsRigidRect'] = rect_elem_ids
+                qb_vt['QBladeOcean']['ElemID_rect']        = rect_elem_ids
+                qb_vt['QBladeOcean']['SIDE_A']             = side_a_coarse[elem_is_rect]
+                qb_vt['QBladeOcean']['SIDE_B']             = side_b_coarse[elem_is_rect]
+                qb_vt['QBladeOcean']['DIAMETER_rect']      = diam_rect_coarse[elem_is_rect]
+                qb_vt['QBladeOcean']['MASSD_rect']         = np.ones(n_rect_elems) * 0.0001
+                # Per-element HyCoID for rectangular members (indexes into HYDROMEMBERCOEFF_RECT)
+                qb_vt['QBladeOcean']['HyCoID_rect_elem']   = hycoid_rect[elem_is_rect]
+                n_rect_coeffs = floater_hydro_rect_cdNx.shape[0]
+                qb_vt['QBladeOcean']['HydroCdNx'] = floater_hydro_rect_cdNx
+                qb_vt['QBladeOcean']['HydroCaNx'] = floater_hydro_rect_caNx
+                qb_vt['QBladeOcean']['HydroCpNx'] = floater_hydro_rect_cpNx
+                qb_vt['QBladeOcean']['HydroCdNy'] = floater_hydro_rect_cdNy
+                qb_vt['QBladeOcean']['HydroCaNy'] = floater_hydro_rect_caNy
+                qb_vt['QBladeOcean']['HydroCpNy'] = floater_hydro_rect_cpNy
+                qb_vt['QBladeOcean']['CoeffID_rect'] = np.arange(n_rect_coeffs, dtype=np.int_) + 1  # offset applied after mooring
+                qb_vt['QBladeOcean']['MCFC_rect']    = np.ones(n_rect_coeffs, dtype=np.int_) * qb_vt['QBladeOcean']['MCFC']
+
             qb_vt['QBladeOcean']['NSubMembers'] = n_members
             qb_vt['QBladeOcean']['MemID'] = imembers
             qb_vt['QBladeOcean']['Jnt1ID'] = N1
             qb_vt['QBladeOcean']['Jnt2ID'] = N2
-            qb_vt['QBladeOcean']['ElmID'] = imembers
+            qb_vt['QBladeOcean']['ElmID'] = new_elm_ids
             qb_vt['QBladeOcean']['ElmRot'] = np.zeros_like(imembers)
-            if qb_vt['QBladeOcean']['override_morison_coefficients']:
-                qb_vt['QBladeOcean']['HyCoID'] = np.ones_like(imembers) # member coefficients
-                qb_vt['QBladeOcean']['AxHyCoID'] = ijoints
-                qb_vt['QBladeOcean']['AxHyCoJnts'] = ijoints # joint coefficients
-                qb_vt['QBladeOcean']['CdA'] = np.ones_like(ijoints)*floater_hydro_cdA
-                qb_vt['QBladeOcean']['CaA'] = np.ones_like(ijoints)*floater_hydro_caA
-                qb_vt['QBladeOcean']['CpA'] = np.ones_like(ijoints)*floater_hydro_cpA
-            else:
-                qb_vt['QBladeOcean']['HyCoID'] = np.zeros_like(imembers)
+
+            # Build HYDROJOINTCOEFF arrays from CdEnd/CaEnd geometry fields.
+            # End joints use CdEnd/CaEnd from the geometry yaml if provided, else zero.
+            CdA_arr = np.zeros(n_joints)
+            CaA_arr = np.zeros(n_joints)
+            CpA_arr = np.zeros(n_joints)
+            warned_potflow_joint_ca = False
+            wt_fp_members = self.options['wt_init']["components"]["floating_platform"]["members"]
+            # Name-based lookup avoids fragile ordering assumptions between wt_init and modopt
+            wt_fp_member_by_name = {m.get("name", ""): m for m in wt_fp_members}
+            for k in range(n_member):
+                if k not in member_joint_start:
+                    continue
+                j1_0 = member_joint_start[k]  # 0-based index
+                j2_0 = member_joint_end[k]    # 0-based index
+                mem_name = modopt["floating"]["members"]["name"][k]
+                member_data = wt_fp_member_by_name.get(mem_name, {})
+                if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                    # Use schema-documented per-member axial overrides (HydroCdA/HydroCaA/HydroCpA)
+                    cd_end_vals = qb_vt['QBladeOcean'].get('HydroCdA', {}).get(mem_name, [0.0, 0.0])
+                    ca_end_vals = qb_vt['QBladeOcean'].get('HydroCaA', {}).get(mem_name, [0.0, 0.0])
+                    cp_end_vals = qb_vt['QBladeOcean'].get('HydroCpA', {}).get(mem_name, [0.0, 0.0])
+                else:
+                    # Fall back to geometry CdEnd/CaEnd fields from wt_init
+                    cd_end_vals = member_data.get("CdEnd", [0.0, 0.0])
+                    ca_end_vals = member_data.get("CaEnd", [0.0, 0.0])
+                    cp_end_vals = [0.0, 0.0]
+                CdA_arr[j1_0] = float(cd_end_vals[0])
+                CdA_arr[j2_0] = float(cd_end_vals[-1])
+                CpA_arr[j1_0] = float(cp_end_vals[0])
+                CpA_arr[j2_0] = float(cp_end_vals[-1])
+                if qb_vt['QBladeOcean']['POTFLOW']:
+                    if (not warned_potflow_joint_ca) and (np.abs(float(ca_end_vals[0])) > 0.0 or np.abs(float(ca_end_vals[-1])) > 0.0):
+                        logger.warning(
+                            "QBladeOcean: POTFLOW=True, forcing joint CaA values to 0.0 to avoid double-counting added mass with radiation terms."
+                        )
+                        warned_potflow_joint_ca = True
+                    CaA_arr[j1_0] = 0.0
+                    CaA_arr[j2_0] = 0.0
+                else:
+                    CaA_arr[j1_0] = float(ca_end_vals[0])
+                    CaA_arr[j2_0] = float(ca_end_vals[-1])
+            has_joint_coeffs = np.any(CdA_arr != 0) or np.any(CaA_arr != 0) or np.any(CpA_arr != 0)
+            if has_joint_coeffs:
+                qb_vt['QBladeOcean']['AxHyCoID']  = ijoints
+                qb_vt['QBladeOcean']['AxHyCoJnts']= ijoints
+                qb_vt['QBladeOcean']['CdA'] = CdA_arr
+                qb_vt['QBladeOcean']['CaA'] = CaA_arr
+                qb_vt['QBladeOcean']['CpA'] = CpA_arr
+            else:                                                                       
                 qb_vt['QBladeOcean']['AxHyCoID'] = np.empty(0)
             qb_vt['QBladeOcean']['IsBuoy'] = np.ones_like(imembers)*qb_vt['QBladeOcean']['IsBuoy']
             qb_vt['QBladeOcean']['MaGrID'] = np.zeros_like(imembers)
             qb_vt['QBladeOcean']['FldArea'] = np.zeros_like(imembers)
             qb_vt['QBladeOcean']['MemberName'] = members_name
-
+           
             # Determine discretization length of the members. The length of a discretized element is set to 10% of the distance between the joints
             if not qb_vt.get('QBladeOcean', {}).get('ElmDsc'):  # if provided in the modeling_options, the user can define the discretization length
                 ElmDsc = np.zeros(0)
@@ -1204,8 +1438,17 @@ class QBLADELoadCases(ExplicitComponent):
                 qb_vt['QBladeOcean']['HydroCpN'] = floater_hydro_cpN
             icoefficients = np.arange(ncoefficients, dtype=np.int_) + 1
             qb_vt['QBladeOcean']['CoeffID']  =  icoefficients
-            qb_vt['QBladeOcean']['MCFC']     =  np.ones_like(imembers)*qb_vt['QBladeOcean']['MCFC']
-        
+            qb_vt['QBladeOcean']['MCFC']     =  np.ones(ncoefficients, dtype=np.int_)*qb_vt['QBladeOcean']['MCFC']
+            # Apply final offset to rect CoeffIDs and SUBMEMBERS HyCoID now that ncoefficients is known.
+            if 'CoeffID_rect' in qb_vt['QBladeOcean']:
+                qb_vt['QBladeOcean']['CoeffID_rect'] += ncoefficients
+                hycoid_r = qb_vt['QBladeOcean']['HyCoID_rect']
+                qb_vt['QBladeOcean']['HyCoID_submem'] = np.where(
+                    hycoid_r > 0,
+                    hycoid_r + ncoefficients,
+                    qb_vt['QBladeOcean']['HyCoID_submem']
+                ).astype(np.int_)
+              
         # Tower inputs for rigid simulations
         if qb_vt['Turbine']['NOSTRUCTURE']:
             qb_vt['Turbine']['ROTORCONE'] = round(inputs['cone'][0], precision) 
@@ -1705,7 +1948,9 @@ class QBLADELoadCases(ExplicitComponent):
             
             if modopt['flags']['floating']:
                 channels_out += ["NP Trans. X_g [m]", "NP Trans. Y_g [m]", "NP Trans. Z_g [m]", "NP Roll X_l [deg]", "NP Pitch Y_l [deg]", "NP Yaw Z_l [deg]"]
-
+                channels_out += ['X_l Mean Tension MOO line1 [N]', 'X_l Mean Tension MOO line2 [N]', 'X_l Mean Tension MOO line3 [N]']
+                channels_out += ['Abs. For. MOO line1 - Floater [N]', 'Abs. For. MOO line2 - Floater [N]', 'Abs. For. MOO line3 - Floater [N]']
+                
             # Sensors required for monopile post-processing
             if modopt['flags']['monopile']:
                 for idx, member in enumerate (self.qb_vt['QBladeOcean']['SUB_Sensors']):
@@ -1909,6 +2154,12 @@ class QBLADELoadCases(ExplicitComponent):
                 except Exception as e:
                     logger.error(f"[MONOPILE LOADING] Error in get_monopile_loading: {e}", exc_info=True)
                     return outputs
+            if modopt['flags']['mooring']:
+                try:
+                    outputs = self.get_mooring_loading(summary_stats, inputs, outputs)
+                except Exception as e:
+                    logger.error(f"[MOORING LOADING] Error in get_mooring_loading: {e}", exc_info=True)
+                    return outputs
 
             # AEP calculation is not very robust when various simulations in an iteration fail. to avoid crashing a full optimization, we wrap it in a try/except block
             try:
@@ -2021,12 +2272,12 @@ class QBLADELoadCases(ExplicitComponent):
 
         modopts = self.options['modeling_options']
         DLCs = [i_dlc['DLC'] for i_dlc in modopts['DLC_driver']['DLCs']]
-        if 'AEP' in DLCs:
-            DLC_label_for_AEP = 'AEP'
-        else:
+        DLC_label_for_AEP = get_dlc_label_for_aep(DLCs)
+        if DLC_label_for_AEP is None:
             DLC_label_for_AEP = '1.1'
-            logger.warning('WARNING: DLC 1.1 is being used for AEP calculations.  Use the AEP DLC for more accurate wind modeling with constant TI.')
-
+            logger.warning('WARNING: No dedicated AEP-like DLC was found. Falling back to DLC 1.1 logic if matching cases exist.')
+        elif DLC_label_for_AEP != 'AEP':
+            logger.warning(f'WARNING: DLC {DLC_label_for_AEP} is being used for AEP calculations. Use the AEP DLC for more accurate wind modeling with constant TI.')
         if self.qb_vt['QSim']['DLCGenerator']:
             idx_pwrcrv = []
             U = []
@@ -2040,7 +2291,7 @@ class QBLADELoadCases(ExplicitComponent):
 
             if len(failed_sim_ids) > 0:
                 mask = ~np.isin(idx_pwrcrv, failed_sim_ids)
-                idx_pwrcrv = np.arange(len(idx_pwrcrv[mask]))
+                idx_pwrcrv = idx_pwrcrv[mask]
                 U = U[mask]
 
                 print("U:", U)
@@ -2065,7 +2316,7 @@ class QBLADELoadCases(ExplicitComponent):
         if len(U) > 1 and self.qb_vt['Turbine']['CONTROLLERTYPE'] > 0 and self.qb_vt['QSim']['DLCGenerator']:
             pp = PowerProduction(discrete_inputs['turbine_class'])
             AEP, perf_data = pp.AEP(stats_pwrcrv, U, pwr_curv_vars_of)
-            
+
             # to avoid dimension missmatch, when a failed simulation is present
             for idx_out, u in enumerate(perf_data['U']):
                 idx_sim = np.where(np.unique(U) == u)[0][0]
@@ -2105,7 +2356,39 @@ class QBLADELoadCases(ExplicitComponent):
             outputs['V_out'] = sum_stats['X_g Inflow Vel. at Hub']['mean'].mean()
 
         return outputs
-          	
+        
+    def get_mooring_loading(self, sum_stats, inputs, outputs):      
+        gamma = 2.4   #safety factor from https://docs.nrel.gov/docs/fy25osti/91416.pdf +20%
+        # this needs to be added to "ADDCHANNELS" input
+        try:
+            outputs['Max_MoorLineTension1'] = np.max(sum_stats['Abs. For. MOO line1 - Floater']['mean'])*1000 # [N]
+            outputs['moor_axial_load_ratio1'] = gamma*outputs['Max_MoorLineTension1']/inputs['mooring_MBL'][0] 
+        except Exception as e: 
+            outputs['Max_MoorLineTension1'] = 0
+            outputs['moor_axial_load_ratio1'] = 0
+            print('[WARNING] : Could not assign value for "Max_MoorLineTension1". Please Make sure to add "Abs. For. MOO line1 - Floater [N]" to "ADDCHANNELS" in "modeling options" file. ')
+            print('[ERROR] ', str(e))
+
+        try:
+            outputs['Max_MoorLineTension2'] = np.max(sum_stats['Abs. For. MOO line2 - Floater']['mean'])*1000
+            outputs['moor_axial_load_ratio2'] = gamma*outputs['Max_MoorLineTension2']/inputs['mooring_MBL'][1] 
+        except Exception as e: 
+            outputs['Max_MoorLineTension2'] = 0
+            outputs['moor_axial_load_ratio2'] = 0
+            print('[WARNING] : Could not assign value for "Max_MoorLineTension2". Please Make sure to add "Abs. For. MOO line2 - Floater [N]" to "ADDCHANNELS" in "modeling options" file. ')
+            print('[ERROR] ', str(e))
+            
+        try:
+            outputs['Max_MoorLineTension3'] = np.max(sum_stats['Abs. For. MOO line3 - Floater']['mean'])*1000
+            outputs['moor_axial_load_ratio3'] = gamma*outputs['Max_MoorLineTension3']/inputs['mooring_MBL'][2] 
+        except Exception as e: 
+            outputs['Max_MoorLineTension3'] = 0
+            outputs['moor_axial_load_ratio3'] = 0
+            print('[WARNING] : Could not assign value for "Max_MoorLineTension3". Please Make sure to add "Abs. For. MOO line3 - Floater [N]" to "ADDCHANNELS" in "modeling options" file. ')
+            print('[ERROR] ', str(e))
+            
+        return outputs   
+        
     def get_blade_loading(self, sum_stats, extreme_table, inputs, outputs):
             """
             Find the spanwise loading along the blade span.
@@ -2416,11 +2699,14 @@ class QBLADELoadCases(ExplicitComponent):
         outputs['Max_PtfmPitch']  = np.max(sum_stats['NP Pitch Y_l']['max'])
         outputs['Mean_PtfmPitch']  = np.max(sum_stats['NP Pitch Y_l']['mean'])
 
+        max_offset_ts = 0 #modfied, added
+        outputs['Max_Offset'] = 0 #modfied, added
+        
         # Max platform offset        
         for timeseries in chan_time:
             max_offset_ts = np.sqrt(timeseries['NP Trans. X_g']**2 + timeseries['NP Trans. Y_g']**2).max()
-            outputs['Max_Offset'] = np.r_[outputs['Max_Offset'],max_offset_ts].max()
-
+            outputs['Max_Offset'] = max(outputs['Max_Offset'], max_offset_ts)  #modfied
+            
         return outputs
 
     def calc_fractional_curved_length(self, control_points):

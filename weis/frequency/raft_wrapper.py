@@ -147,6 +147,8 @@ class RAFT_WEIS_Prep(om.ExplicitComponent):
                 self.add_input(f"member{k}:outer_diameter", val=np.zeros(n_height), units="m")
                 self.add_input(f"member{k}:Ca", val=np.zeros(n_height))
                 self.add_input(f"member{k}:Cd", val=np.zeros(n_height))
+                self.add_input(f"member{k}:CaEnd", val=np.zeros(2))
+                self.add_input(f"member{k}:CdEnd", val=np.zeros(2))
                 self.add_output(f"platform_member{k+1}_d", val=np.zeros(n_height), units="m")
             elif opt["floating"]["members"]["outer_shape"][k] == "rectangular":
                 self.add_input(f"member{k}:side_length_a", val=np.zeros(n_height), units="m")
@@ -155,6 +157,8 @@ class RAFT_WEIS_Prep(om.ExplicitComponent):
                 self.add_input(f"member{k}:Cd", val=np.zeros(n_height))
                 self.add_input(f"member{k}:Cay", val=np.zeros(n_height))
                 self.add_input(f"member{k}:Cdy", val=np.zeros(n_height))
+                self.add_input(f"member{k}:CaEnd", val=np.zeros(2))
+                self.add_input(f"member{k}:CdEnd", val=np.zeros(2))              
                 # RAFT collect a and b into d
                 self.add_output(f"platform_member{k+1}_d", val=np.zeros([n_height,2]), units="m")
             self.add_input(f"member{k}:height", val=0.0, units="m")
@@ -266,14 +270,17 @@ class RAFT_WEIS_Prep(om.ExplicitComponent):
                 outputs[f"platform_member{k+1}_d"] = inputs[f"member{k}:outer_diameter"]
                 outputs[f"platform_member{k+1}_Ca"] = inputs[f"member{k}:Ca"] if np.all(inputs[f"member{k}:Ca"]>0.0) else 1
                 outputs[f"platform_member{k+1}_Cd"] = inputs[f"member{k}:Cd"] if np.all(inputs[f"member{k}:Cd"]>0.0) else 1
+                outputs[f"platform_member{k+1}_CaEnd"] = inputs[f"member{k}:CaEnd"] if np.all(inputs[f"member{k}:CaEnd"]>0.0) else 0
+                outputs[f"platform_member{k+1}_CdEnd"] = inputs[f"member{k}:CdEnd"] if np.all(inputs[f"member{k}:CdEnd"]>0.0) else 0
             elif opt["floating"]["members"]["outer_shape"][k] == "rectangular":
                 outputs[f"platform_member{k+1}_d"][:, 0] = inputs[f"member{k}:side_length_a"]
                 outputs[f"platform_member{k+1}_d"][:, 1] = inputs[f"member{k}:side_length_b"]
                 outputs[f"platform_member{k+1}_Ca"][:, 0] = inputs[f"member{k}:Ca"] if np.all(inputs[f"member{k}:Ca"]>0.0) else 1
                 outputs[f"platform_member{k+1}_Cd"][:, 0] = inputs[f"member{k}:Cd"] if np.all(inputs[f"member{k}:Cd"]>0.0) else 1
                 outputs[f"platform_member{k+1}_Ca"][:, 1] = inputs[f"member{k}:Cay"] if np.all(inputs[f"member{k}:Cay"]>0.0) else 1
-                outputs[f"platform_member{k+1}_Cd"][:, 0] = inputs[f"member{k}:Cdy"] if np.all(inputs[f"member{k}:Cdy"]>0.0) else 1
-
+                outputs[f"platform_member{k+1}_Cd"][:, 1] = inputs[f"member{k}:Cdy"] if np.all(inputs[f"member{k}:Cdy"]>0.0) else 1
+                outputs[f"platform_member{k+1}_CaEnd"] = inputs[f"member{k}:CaEnd"] if np.all(inputs[f"member{k}:CaEnd"]>0.0) else 0
+                outputs[f"platform_member{k+1}_CdEnd"] = inputs[f"member{k}:CdEnd"] if np.all(inputs[f"member{k}:CdEnd"]>0.0) else 0
             # Ring stiffener discretization conversion
             if ( (float(inputs[f"member{k}:ring_stiffener_spacing"]) > 0.0) and
                  (float(inputs[f"member{k}:ring_stiffener_spacing"]) < 1.0) ):
