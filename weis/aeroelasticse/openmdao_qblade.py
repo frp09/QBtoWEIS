@@ -358,7 +358,7 @@ class QBLADELoadCases(ExplicitComponent):
         self.add_output('Ct_out',       val=np.zeros(n_ws),                   desc='rotor aero thrust coefficient')
         self.add_output('Omega_out',    val=np.zeros(n_ws),   units='rpm',    desc='rotation speeds to run')
         self.add_output('pitch_out',    val=np.zeros(n_ws),   units='deg',    desc='pitch angles to run')
-        self.add_output('AEP',          val=0.0,                    units='kW*h',   desc='annual energy production reconstructed from the openfast simulations')
+        self.add_output('AEP',          val=0.0,              units='kW*h',   desc='annual energy production reconstructed from the openfast simulations')
 
 
         # Control outputs
@@ -377,6 +377,8 @@ class QBLADELoadCases(ExplicitComponent):
         self.add_output('max_RootMyc',          val=0.0,                    units='kN*m',   desc='Maximum of the signals RootMyb1, RootMyb2, ... across all n blades representing the maximum blade root out of plane moment')
         self.add_output('max_RootMzb',          val=0.0,                    units='kN*m',   desc='Maximum of the signals RootMzb1, RootMzb2, ... across all n blades representing the maximum blade root torsional moment')
         self.add_output('DEL_RootMyb',          val=0.0,                    units='kN*m',   desc='damage equivalent load of blade root flap bending moment in out-of-plane direction')
+        self.add_output('DEL_RootMxb',          val=0.0,                    units='kN*m',   desc='damage equivalent load of blade root edge bending moment in out-of-plane direction')
+        self.add_output('DEL_RootMzb',          val=0.0,                    units='kN*m',   desc='damage equivalent load of blade root tors bending moment in out-of-plane direction')
         self.add_output('max_aoa',              val=np.zeros(n_span),       units='deg',    desc='maxima of the angles of attack distributed along blade span')
         self.add_output('std_aoa',              val=np.zeros(n_span),       units='deg',    desc='standard deviation of the angles of attack distributed along blade span')
         self.add_output('mean_aoa',             val=np.zeros(n_span),       units='deg',    desc='mean of the angles of attack distributed along blade span')
@@ -384,6 +386,8 @@ class QBLADELoadCases(ExplicitComponent):
         # Hub outputs
         self.add_output('hub_Fxyz',             val=np.zeros(3),    	    units='kN',     desc = 'Maximum hub forces in the non rotating frame')
         self.add_output('hub_Mxyz',             val=np.zeros(3),    	    units='kN*m',   desc = 'Maximum hub moments in the non rotating frame')
+        self.add_output('AeroThrust',           val=0.0,    	            units='kN',     desc = 'Maximum aerodynamic thrust')
+        self.add_output('max_AeroThrust_ratio', val=0.0,    	                            desc = 'ratio of maximum aerodynamic thrust to maximum allowable aerodynamic thrust')
 
         # Tower related outputs
         self.add_output('max_TwrBsMyt',         val=0.0,                    units='kN*m',   desc='maximum of L2-norm of tower base moment around x,y,z') #'maximum of tower base bending moment in fore-aft direction')
@@ -958,8 +962,7 @@ class QBLADELoadCases(ExplicitComponent):
                 member_cdy_reduced = np.array([])
                 member_cay_reduced = np.array([])
                 member_cpy_reduced = np.array([])
-                
-                
+
                 # Look over members and grab all nodes and internal connections
                 n_member = modopt["floating"]["members"]["n_members"]
                 for k in range(n_member):
@@ -1109,6 +1112,7 @@ class QBLADELoadCases(ExplicitComponent):
                         elem_is_rect  = np.append(elem_is_rect,  np.zeros(n_new_elems, dtype=bool))
                         member_joint_start[k] = nk
                         member_joint_end[k]   = nk + inode_xyz.shape[0] - 1
+
                     t_coarse = np.append(t_coarse, it_coarse)  
                     joints_xyz = np.append(joints_xyz, inode_xyz, axis=0)
 
@@ -1173,7 +1177,7 @@ class QBLADELoadCases(ExplicitComponent):
             # Hydro Coefficients floater    
             floater_hydro_cdN = np.empty(0)
             floater_hydro_caN = np.empty(0)
-            floater_hydro_cpN = np.empty(0)      
+            floater_hydro_cpN = np.empty(0) 
             nfloater_hydro_coeffs = 0
 
             if modopt['flags']['floating'] and member_cd_reduced.shape[0] != n_members:
@@ -1341,8 +1345,8 @@ class QBLADELoadCases(ExplicitComponent):
                 qb_vt['QBladeOcean']['AxHyCoJnts']= ijoints
                 qb_vt['QBladeOcean']['CdA'] = CdA_arr
                 qb_vt['QBladeOcean']['CaA'] = CaA_arr
-                qb_vt['QBladeOcean']['CpA'] = CpA_arr
-            else:                                                                       
+                qb_vt['QBladeOcean']['CpA'] = CpA_arr                                                                      
+            else:
                 qb_vt['QBladeOcean']['AxHyCoID'] = np.empty(0)
             qb_vt['QBladeOcean']['IsBuoy'] = np.ones_like(imembers)*qb_vt['QBladeOcean']['IsBuoy']
             qb_vt['QBladeOcean']['MaGrID'] = np.zeros_like(imembers)
@@ -1448,7 +1452,7 @@ class QBLADELoadCases(ExplicitComponent):
                     hycoid_r + ncoefficients,
                     qb_vt['QBladeOcean']['HyCoID_submem']
                 ).astype(np.int_)
-              
+        
         # Tower inputs for rigid simulations
         if qb_vt['Turbine']['NOSTRUCTURE']:
             qb_vt['Turbine']['ROTORCONE'] = round(inputs['cone'][0], precision) 
@@ -1898,10 +1902,14 @@ class QBLADELoadCases(ExplicitComponent):
                 channels_out += [f'Z_b Rot.Def. BLD_1 pos {bld_station[0]:.3f} [deg]']
                 channels_out += [f'X_c Aero. Force BLD_1 pos {bld_station[0]:.3f} [N/m]']
                 channels_out += [f'Y_c Aero. Force BLD_1 pos {bld_station[0]:.3f} [N/m]']
+                #channels_out += [f'Axial Induction BLD_1 pos {bld_station[0]:.3f} [-]']
+                #channels_out += [f'Lift Coefficient BLD_1 pos {bld_station[0]:.3f} [-]']
+                #channels_out += [f'Drag Coefficient BLD_1 pos {bld_station[0]:.3f} [-]']
                 channels_out += [f'Z_l For. BLD_2 pos {bld_station[1]:.3f} [N]']
                 channels_out += [f'X_l Mom. BLD_2 pos {bld_station[1]:.3f} [Nm]']
                 channels_out += [f'Y_l Mom. BLD_2 pos {bld_station[1]:.3f} [Nm]']
                 channels_out += [f'Angle of Attack BLD_2 pos {bld_station[1]:.3f} [deg]']
+
                 
                 if self.n_blades == 3:
                     channels_out += [f'Z_l For. BLD_3 pos {bld_station[2]:.3f} [N]']
@@ -2146,6 +2154,7 @@ class QBLADELoadCases(ExplicitComponent):
         if not self.qb_vt['Turbine']['NOSTRUCTURE']:
             if self.options['modeling_options']['flags']['blade']:
                 outputs = self.get_blade_loading(summary_stats, extreme_table, inputs, outputs)
+                outputs = self.get_rotor_loading(summary_stats, outputs)
             if self.options['modeling_options']['flags']['tower']:
                 outputs = self.get_tower_loading(summary_stats, extreme_table, inputs, outputs)
             if modopt['flags']['monopile']:
@@ -2214,6 +2223,8 @@ class QBLADELoadCases(ExplicitComponent):
         
         # Standard DELs for blade root and tower base
         outputs['DEL_RootMyb'] = np.max([DELs[f'Y_b RootBend. Mom. BLD_{k+1}'] for k in range(self.n_blades)])
+        outputs['DEL_RootMxb'] = np.max([DELs[f'X_b RootBend. Mom. BLD_{k+1}'] for k in range(self.n_blades)])
+        outputs['DEL_RootMzb'] = np.max([DELs[f'Z_b RootBend. Mom. BLD_{k+1}'] for k in range(self.n_blades)])
         outputs['DEL_TwrBsMyt'] = DELs['TwrBsM']
         outputs['DEL_XtbMom'] = DELs['XtbMom']
         outputs['DEL_YtbMom'] = DELs['YtbMom']
@@ -2278,6 +2289,7 @@ class QBLADELoadCases(ExplicitComponent):
             logger.warning('WARNING: No dedicated AEP-like DLC was found. Falling back to DLC 1.1 logic if matching cases exist.')
         elif DLC_label_for_AEP != 'AEP':
             logger.warning(f'WARNING: DLC {DLC_label_for_AEP} is being used for AEP calculations. Use the AEP DLC for more accurate wind modeling with constant TI.')
+
         if self.qb_vt['QSim']['DLCGenerator']:
             idx_pwrcrv = []
             U = []
@@ -2390,127 +2402,128 @@ class QBLADELoadCases(ExplicitComponent):
         return outputs   
         
     def get_blade_loading(self, sum_stats, extreme_table, inputs, outputs):
-            """
-            Find the spanwise loading along the blade span.
-
-            Parameters
-            ----------
-            sum_stats : pd.DataFrame
-            extreme_table : dict
-            """
-
-            # Determine maximum deflection magnitudes
-            if self.n_blades == 2:
-                defl_mag = [max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_1']['max']), max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_2']['max'])]
-            else:
-                defl_mag = [max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_1']['max']), max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_2']['max']), max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_3']['max'])]
-            # Get the maximum out of plane blade deflection
-            outputs["max_TipDxc"] = np.max(defl_mag)
-
-            # Return moments around x and y and axial force along blade span at instance of largest flapwise bending moment at each node
-            My_chans = ["Y_b RootBend. Mom. BLD_", "Y_l Mom. BLD_ pos 0.100", "Y_l Mom. BLD_ pos 0.200", "Y_l Mom. BLD_ pos 0.300", "Y_l Mom. BLD_ pos 0.400", "Y_l Mom. BLD_ pos 0.500", "Y_l Mom. BLD_ pos 0.600", "Y_l Mom. BLD_ pos 0.700", "Y_l Mom. BLD_ pos 0.800", "Y_l Mom. BLD_ pos 0.900"]
-            Mx_chans = ["X_b RootBend. Mom. BLD_", "X_l Mom. BLD_ pos 0.100", "X_l Mom. BLD_ pos 0.200", "X_l Mom. BLD_ pos 0.300", "X_l Mom. BLD_ pos 0.400", "X_l Mom. BLD_ pos 0.500", "X_l Mom. BLD_ pos 0.600", "X_l Mom. BLD_ pos 0.700", "X_l Mom. BLD_ pos 0.800", "X_l Mom. BLD_ pos 0.900"]
-            Fz_chans = ["Z_b Root For. BLD_", "Z_l For. BLD_ pos 0.100", "Z_l For. BLD_ pos 0.200", "Z_l For. BLD_ pos 0.300", "Z_l For. BLD_ pos 0.400", "Z_l For. BLD_ pos 0.500", "Z_l For. BLD_ pos 0.600", "Z_l For. BLD_ pos 0.700", "Z_l For. BLD_ pos 0.800", "Z_l For. BLD_ pos 0.900"]
-                
-            Fz = []
-            Mx = []
-            My = []
-            for My_chan,Mx_chan,Fz_chan in zip(My_chans, Mx_chans, Fz_chans):
-                if self.n_blades == 2:
-                    idx_BLD = My_chan.index('BLD_')
-                    My_chan_bld1 = My_chan[:idx_BLD+4] + '1' + My_chan[idx_BLD+4:]
-                    My_chan_bld2 = My_chan[:idx_BLD+4] + '2' + My_chan[idx_BLD+4:]
-                else:
-                    idx_BLD = My_chan.index('BLD_')
-                    My_chan_bld1 = My_chan[:idx_BLD+4] + '1' + My_chan[idx_BLD+4:]
-                    My_chan_bld2 = My_chan[:idx_BLD+4] + '2' + My_chan[idx_BLD+4:]
-                    My_chan_bld3 = My_chan[:idx_BLD+4] + '3' + My_chan[idx_BLD+4:]
-                    bld_idx_max = np.argmax([max(sum_stats[My_chan_bld1]['max']), max(sum_stats[My_chan_bld2]['max']), max(sum_stats[My_chan_bld3]['max'])])
-                    # TODO what about Mz here?
-                    My_max_chan = My_chan[:idx_BLD+4] + str(bld_idx_max+1) + My_chan[idx_BLD+4:]
-                    My.append(extreme_table[My_max_chan][np.argmax(sum_stats[My_max_chan]['max'])][My_chan[:idx_BLD+4] + str(bld_idx_max+1) + My_chan[idx_BLD+4:]])
-                    Mx.append(extreme_table[My_max_chan][np.argmax(sum_stats[My_max_chan]['max'])][Mx_chan[:idx_BLD+4] + str(bld_idx_max+1) + Mx_chan[idx_BLD+4:]])
-                    Fz.append(extreme_table[My_max_chan][np.argmax(sum_stats[My_max_chan]['max'])][Fz_chan[:idx_BLD+4] + str(bld_idx_max+1) + Fz_chan[idx_BLD+4:]])
-
-
-            if np.any(np.isnan(Fz)):
-                logger.warning('WARNING: nans found in Fz extremes')
-                Fz[np.isnan(Fz)] = 0.0
-            if np.any(np.isnan(Mx)):
-                logger.warning('WARNING: nans found in Mx extremes')
-                Mx[np.isnan(Mx)] = 0.0
-            if np.any(np.isnan(My)):
-                logger.warning('WARNING: nans found in My extremes')
-                My[np.isnan(My)] = 0.0
             
-            blade_grid_local = np.linspace(0,0.9,10) * inputs['ref_axis_blade'][-1,2]
-            blade_grid = np.hstack((blade_grid_local + inputs['Rhub'], inputs['Rtip']))
-            spline_Fz = PchipInterpolator(blade_grid, np.hstack((Fz, 0.)))
-            spline_Mx = PchipInterpolator(blade_grid, np.hstack((Mx, 0.)))
-            spline_My = PchipInterpolator(blade_grid, np.hstack((My, 0.)))
+        """
+        Find the spanwise loading along the blade span.
 
-            r = inputs['r']
-            Fz_out = spline_Fz(r).flatten()
-            Mx_out = spline_Mx(r).flatten()
-            My_out = spline_My(r).flatten()
+        Parameters
+        ----------
+        sum_stats : pd.DataFrame
+        extreme_table : dict
+        """
 
-            outputs['blade_maxTD_Mx'] = Mx_out
-            outputs['blade_maxTD_My'] = My_out
-            outputs['blade_maxTD_Fz'] = Fz_out
+        # Determine maximum deflection magnitudes
+        if self.n_blades == 2:
+            defl_mag = [max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_1']['max']), max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_2']['max'])]
+        else:
+            defl_mag = [max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_1']['max']), max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_2']['max']), max(sum_stats['X_c Tip Trl.Def. (OOP) BLD_3']['max'])]
+        # Get the maximum out of plane blade deflection
+        outputs["max_TipDxc"] = np.max(defl_mag)
 
-            # Determine maximum root moment
-            if self.n_blades == 2:
-                blade_root_flap_moment = max([max(sum_stats['Y_b RootBend. Mom. BLD_1']['max']), max(sum_stats['Y_b RootBend. Mom. BLD_2']['max'])])
-                blade_root_oop_moment  = max([max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_1']['max']), max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_2']['max'])])
-                blade_root_tors_moment  = max([max(sum_stats['Z_b RootBend. Mom. BLD_1']['max']), max(sum_stats['Z_b RootBend. Mom. BLD_2']['max'])])
-            else:
-                blade_root_flap_moment = max([max(sum_stats['Y_b RootBend. Mom. BLD_1']['max']), max(sum_stats['Y_b RootBend. Mom. BLD_2']['max']), max(sum_stats['Y_b RootBend. Mom. BLD_3']['max'])])
-                blade_root_oop_moment  = max([max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_1']['max']), max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_2']['max']), max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_3']['max'])])
-                blade_root_tors_moment  = max([max(sum_stats['Z_b RootBend. Mom. BLD_1']['max']), max(sum_stats['Z_b RootBend. Mom. BLD_2']['max']), max(sum_stats['Z_b RootBend. Mom. BLD_3']['max'])])
+        # Return moments around x and y and axial force along blade span at instance of largest flapwise bending moment at each node
+        My_chans = ["Y_b RootBend. Mom. BLD_", "Y_l Mom. BLD_ pos 0.100", "Y_l Mom. BLD_ pos 0.200", "Y_l Mom. BLD_ pos 0.300", "Y_l Mom. BLD_ pos 0.400", "Y_l Mom. BLD_ pos 0.500", "Y_l Mom. BLD_ pos 0.600", "Y_l Mom. BLD_ pos 0.700", "Y_l Mom. BLD_ pos 0.800", "Y_l Mom. BLD_ pos 0.900"]
+        Mx_chans = ["X_b RootBend. Mom. BLD_", "X_l Mom. BLD_ pos 0.100", "X_l Mom. BLD_ pos 0.200", "X_l Mom. BLD_ pos 0.300", "X_l Mom. BLD_ pos 0.400", "X_l Mom. BLD_ pos 0.500", "X_l Mom. BLD_ pos 0.600", "X_l Mom. BLD_ pos 0.700", "X_l Mom. BLD_ pos 0.800", "X_l Mom. BLD_ pos 0.900"]
+        Fz_chans = ["Z_b Root For. BLD_", "Z_l For. BLD_ pos 0.100", "Z_l For. BLD_ pos 0.200", "Z_l For. BLD_ pos 0.300", "Z_l For. BLD_ pos 0.400", "Z_l For. BLD_ pos 0.500", "Z_l For. BLD_ pos 0.600", "Z_l For. BLD_ pos 0.700", "Z_l For. BLD_ pos 0.800", "Z_l For. BLD_ pos 0.900"]
             
-            outputs['max_RootMyb'] = blade_root_flap_moment
-            outputs['max_RootMyc'] = blade_root_oop_moment
-            outputs['max_RootMzb'] = blade_root_tors_moment
-
-            ## Get hub moments and forces in the non-rotating frame
-            outputs['hub_Fxyz'] = np.array([extreme_table['LSShftF'][np.argmax(sum_stats['LSShftF']['max'])]['X_s For. Shaft Const.'],
-                                        extreme_table['LSShftF'][np.argmax(sum_stats['LSShftF']['max'])]['Y_s For. Shaft Const.'],
-                                        extreme_table['LSShftF'][np.argmax(sum_stats['LSShftF']['max'])]['Z_s For. Shaft Const.']]) # TODO why the scalin if already in kN*1.e3
-            outputs['hub_Mxyz'] = np.array([extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['X_s Mom. Shaft Const.'],
-                                        extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['Y_s Mom. Shaft Const.'],
-                                        extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['Z_s Mom. Shaft Const.']]) # TODO why the scalin if already in kN*1.e3
-
-            ## Post process aerodynamic data
-            # Angles of attack - max, std, mean
-            blade1_chans_aoa = ["Angle of Attack BLD_1 pos 0.100", "Angle of Attack BLD_1 pos 0.200", "Angle of Attack BLD_1 pos 0.300", "Angle of Attack BLD_1 pos 0.400", "Angle of Attack BLD_1 pos 0.500", "Angle of Attack BLD_1 pos 0.600", "Angle of Attack BLD_1 pos 0.700", "Angle of Attack BLD_1 pos 0.800", "Angle of Attack BLD_1 pos 0.900"]
-            blade2_chans_aoa = ["Angle of Attack BLD_2 pos 0.100", "Angle of Attack BLD_2 pos 0.200", "Angle of Attack BLD_2 pos 0.300", "Angle of Attack BLD_2 pos 0.400", "Angle of Attack BLD_2 pos 0.500", "Angle of Attack BLD_2 pos 0.600", "Angle of Attack BLD_2 pos 0.700", "Angle of Attack BLD_2 pos 0.800", "Angle of Attack BLD_2 pos 0.900"]
-            
-            aoa_max_B1  = [np.max(sum_stats[var]['max'])    for var in blade1_chans_aoa]
-            aoa_mean_B1 = [np.mean(sum_stats[var]['mean'])  for var in blade1_chans_aoa]
-            aoa_std_B1  = [np.mean(sum_stats[var]['std'])   for var in blade1_chans_aoa]
-            aoa_max_B2  = [np.max(sum_stats[var]['max'])    for var in blade2_chans_aoa]
-            aoa_mean_B2 = [np.mean(sum_stats[var]['mean'])  for var in blade2_chans_aoa]
-            aoa_std_B2  = [np.mean(sum_stats[var]['std'])   for var in blade2_chans_aoa]
+        Fz = []
+        Mx = []
+        My = []
+        for My_chan,Mx_chan,Fz_chan in zip(My_chans, Mx_chans, Fz_chans):
             if self.n_blades == 2:
-                spline_aoa_max      = PchipInterpolator(self.R_out_AD, np.max([aoa_max_B1, aoa_max_B2], axis=0))
-                spline_aoa_std      = PchipInterpolator(self.R_out_AD, np.mean([aoa_std_B1, aoa_std_B2], axis=0))
-                spline_aoa_mean     = PchipInterpolator(self.R_out_AD, np.mean([aoa_mean_B1, aoa_mean_B2], axis=0))
-            elif self.n_blades == 3:
-                blade3_chans_aoa = ["Angle of Attack BLD_3 pos 0.100", "Angle of Attack BLD_3 pos 0.200", "Angle of Attack BLD_3 pos 0.300", "Angle of Attack BLD_3 pos 0.400", "Angle of Attack BLD_3 pos 0.500", "Angle of Attack BLD_3 pos 0.600", "Angle of Attack BLD_3 pos 0.700", "Angle of Attack BLD_3 pos 0.800", "Angle of Attack BLD_3 pos 0.900"]
-                aoa_max_B3          = [np.max(sum_stats[var]['max'])    for var in blade3_chans_aoa]
-                aoa_mean_B3         = [np.mean(sum_stats[var]['mean'])  for var in blade3_chans_aoa]
-                aoa_std_B3          = [np.mean(sum_stats[var]['std'])   for var in blade3_chans_aoa]
-                spline_aoa_max      = PchipInterpolator(self.R_out_AD, np.max([aoa_max_B1, aoa_max_B2, aoa_max_B3], axis=0))
-                spline_aoa_std      = PchipInterpolator(self.R_out_AD, np.mean([aoa_max_B1, aoa_std_B2, aoa_std_B3], axis=0))
-                spline_aoa_mean     = PchipInterpolator(self.R_out_AD, np.mean([aoa_mean_B1, aoa_mean_B2, aoa_mean_B3], axis=0))
+                idx_BLD = My_chan.index('BLD_')
+                My_chan_bld1 = My_chan[:idx_BLD+4] + '1' + My_chan[idx_BLD+4:]
+                My_chan_bld2 = My_chan[:idx_BLD+4] + '2' + My_chan[idx_BLD+4:]
             else:
-                raise Exception('The calculations only support 2 or 3 bladed rotors')
+                idx_BLD = My_chan.index('BLD_')
+                My_chan_bld1 = My_chan[:idx_BLD+4] + '1' + My_chan[idx_BLD+4:]
+                My_chan_bld2 = My_chan[:idx_BLD+4] + '2' + My_chan[idx_BLD+4:]
+                My_chan_bld3 = My_chan[:idx_BLD+4] + '3' + My_chan[idx_BLD+4:]
+                bld_idx_max = np.argmax([max(sum_stats[My_chan_bld1]['max']), max(sum_stats[My_chan_bld2]['max']), max(sum_stats[My_chan_bld3]['max'])])
+                # TODO what about Mz here?
+                My_max_chan = My_chan[:idx_BLD+4] + str(bld_idx_max+1) + My_chan[idx_BLD+4:]
+                My.append(extreme_table[My_max_chan][np.argmax(sum_stats[My_max_chan]['max'])][My_chan[:idx_BLD+4] + str(bld_idx_max+1) + My_chan[idx_BLD+4:]])
+                Mx.append(extreme_table[My_max_chan][np.argmax(sum_stats[My_max_chan]['max'])][Mx_chan[:idx_BLD+4] + str(bld_idx_max+1) + Mx_chan[idx_BLD+4:]])
+                Fz.append(extreme_table[My_max_chan][np.argmax(sum_stats[My_max_chan]['max'])][Fz_chan[:idx_BLD+4] + str(bld_idx_max+1) + Fz_chan[idx_BLD+4:]])
 
-            outputs['max_aoa']  = spline_aoa_max(r)
-            outputs['std_aoa']  = spline_aoa_std(r)
-            outputs['mean_aoa'] = spline_aoa_mean(r)
 
-            return outputs
+        if np.any(np.isnan(Fz)):
+            logger.warning('WARNING: nans found in Fz extremes')
+            Fz[np.isnan(Fz)] = 0.0
+        if np.any(np.isnan(Mx)):
+            logger.warning('WARNING: nans found in Mx extremes')
+            Mx[np.isnan(Mx)] = 0.0
+        if np.any(np.isnan(My)):
+            logger.warning('WARNING: nans found in My extremes')
+            My[np.isnan(My)] = 0.0
+        
+        blade_grid_local = np.linspace(0,0.9,10) * inputs['ref_axis_blade'][-1,2]
+        blade_grid = np.hstack((blade_grid_local + inputs['Rhub'], inputs['Rtip']))
+        spline_Fz = PchipInterpolator(blade_grid, np.hstack((Fz, 0.)))
+        spline_Mx = PchipInterpolator(blade_grid, np.hstack((Mx, 0.)))
+        spline_My = PchipInterpolator(blade_grid, np.hstack((My, 0.)))
+
+        r = inputs['r']
+        Fz_out = spline_Fz(r).flatten()
+        Mx_out = spline_Mx(r).flatten()
+        My_out = spline_My(r).flatten()
+
+        outputs['blade_maxTD_Mx'] = Mx_out
+        outputs['blade_maxTD_My'] = My_out
+        outputs['blade_maxTD_Fz'] = Fz_out
+
+        # Determine maximum root moment
+        if self.n_blades == 2:
+            blade_root_flap_moment = max([max(sum_stats['Y_b RootBend. Mom. BLD_1']['max']), max(sum_stats['Y_b RootBend. Mom. BLD_2']['max'])])
+            blade_root_oop_moment  = max([max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_1']['max']), max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_2']['max'])])
+            blade_root_tors_moment  = max([max(sum_stats['Z_b RootBend. Mom. BLD_1']['max']), max(sum_stats['Z_b RootBend. Mom. BLD_2']['max'])])
+        else:
+            blade_root_flap_moment = max([max(sum_stats['Y_b RootBend. Mom. BLD_1']['max']), max(sum_stats['Y_b RootBend. Mom. BLD_2']['max']), max(sum_stats['Y_b RootBend. Mom. BLD_3']['max'])])
+            blade_root_oop_moment  = max([max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_1']['max']), max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_2']['max']), max(sum_stats['Y_c RootBend. Mom. (OOP) BLD_3']['max'])])
+            blade_root_tors_moment  = max([max(sum_stats['Z_b RootBend. Mom. BLD_1']['max']), max(sum_stats['Z_b RootBend. Mom. BLD_2']['max']), max(sum_stats['Z_b RootBend. Mom. BLD_3']['max'])])
+        
+        outputs['max_RootMyb'] = blade_root_flap_moment
+        outputs['max_RootMyc'] = blade_root_oop_moment
+        outputs['max_RootMzb'] = blade_root_tors_moment
+
+        ## Get hub moments and forces in the non-rotating frame
+        outputs['hub_Fxyz'] = np.array([extreme_table['LSShftF'][np.argmax(sum_stats['LSShftF']['max'])]['X_s For. Shaft Const.'],
+                                    extreme_table['LSShftF'][np.argmax(sum_stats['LSShftF']['max'])]['Y_s For. Shaft Const.'],
+                                    extreme_table['LSShftF'][np.argmax(sum_stats['LSShftF']['max'])]['Z_s For. Shaft Const.']]) # TODO why the scalin if already in kN*1.e3
+        outputs['hub_Mxyz'] = np.array([extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['X_s Mom. Shaft Const.'],
+                                    extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['Y_s Mom. Shaft Const.'],
+                                    extreme_table['LSShftM'][np.argmax(sum_stats['LSShftM']['max'])]['Z_s Mom. Shaft Const.']]) # TODO why the scalin if already in kN*1.e3
+        
+        ## Post process aerodynamic data
+        # Angles of attack - max, std, mean
+        blade1_chans_aoa = ["Angle of Attack BLD_1 pos 0.100", "Angle of Attack BLD_1 pos 0.200", "Angle of Attack BLD_1 pos 0.300", "Angle of Attack BLD_1 pos 0.400", "Angle of Attack BLD_1 pos 0.500", "Angle of Attack BLD_1 pos 0.600", "Angle of Attack BLD_1 pos 0.700", "Angle of Attack BLD_1 pos 0.800", "Angle of Attack BLD_1 pos 0.900"]
+        blade2_chans_aoa = ["Angle of Attack BLD_2 pos 0.100", "Angle of Attack BLD_2 pos 0.200", "Angle of Attack BLD_2 pos 0.300", "Angle of Attack BLD_2 pos 0.400", "Angle of Attack BLD_2 pos 0.500", "Angle of Attack BLD_2 pos 0.600", "Angle of Attack BLD_2 pos 0.700", "Angle of Attack BLD_2 pos 0.800", "Angle of Attack BLD_2 pos 0.900"]
+        
+        aoa_max_B1  = [np.max(sum_stats[var]['max'])    for var in blade1_chans_aoa]
+        aoa_mean_B1 = [np.mean(sum_stats[var]['mean'])  for var in blade1_chans_aoa]
+        aoa_std_B1  = [np.mean(sum_stats[var]['std'])   for var in blade1_chans_aoa]
+        aoa_max_B2  = [np.max(sum_stats[var]['max'])    for var in blade2_chans_aoa]
+        aoa_mean_B2 = [np.mean(sum_stats[var]['mean'])  for var in blade2_chans_aoa]
+        aoa_std_B2  = [np.mean(sum_stats[var]['std'])   for var in blade2_chans_aoa]
+        if self.n_blades == 2:
+            spline_aoa_max      = PchipInterpolator(self.R_out_AD, np.max([aoa_max_B1, aoa_max_B2], axis=0))
+            spline_aoa_std      = PchipInterpolator(self.R_out_AD, np.mean([aoa_std_B1, aoa_std_B2], axis=0))
+            spline_aoa_mean     = PchipInterpolator(self.R_out_AD, np.mean([aoa_mean_B1, aoa_mean_B2], axis=0))
+        elif self.n_blades == 3:
+            blade3_chans_aoa = ["Angle of Attack BLD_3 pos 0.100", "Angle of Attack BLD_3 pos 0.200", "Angle of Attack BLD_3 pos 0.300", "Angle of Attack BLD_3 pos 0.400", "Angle of Attack BLD_3 pos 0.500", "Angle of Attack BLD_3 pos 0.600", "Angle of Attack BLD_3 pos 0.700", "Angle of Attack BLD_3 pos 0.800", "Angle of Attack BLD_3 pos 0.900"]
+            aoa_max_B3          = [np.max(sum_stats[var]['max'])    for var in blade3_chans_aoa]
+            aoa_mean_B3         = [np.mean(sum_stats[var]['mean'])  for var in blade3_chans_aoa]
+            aoa_std_B3          = [np.mean(sum_stats[var]['std'])   for var in blade3_chans_aoa]
+            spline_aoa_max      = PchipInterpolator(self.R_out_AD, np.max([aoa_max_B1, aoa_max_B2, aoa_max_B3], axis=0))
+            spline_aoa_std      = PchipInterpolator(self.R_out_AD, np.mean([aoa_max_B1, aoa_std_B2, aoa_std_B3], axis=0))
+            spline_aoa_mean     = PchipInterpolator(self.R_out_AD, np.mean([aoa_mean_B1, aoa_mean_B2, aoa_mean_B3], axis=0))
+        else:
+            raise Exception('The calculations only support 2 or 3 bladed rotors')
+
+        outputs['max_aoa']  = spline_aoa_max(r)
+        outputs['std_aoa']  = spline_aoa_std(r)
+        outputs['mean_aoa'] = spline_aoa_mean(r)
+
+        return outputs
 
     def get_tower_loading(self, sum_stats, extreme_table, inputs, outputs):
         """

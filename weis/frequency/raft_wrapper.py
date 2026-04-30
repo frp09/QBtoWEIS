@@ -161,6 +161,7 @@ class RAFT_WEIS_Prep(om.ExplicitComponent):
                 self.add_input(f"member{k}:CdEnd", val=np.zeros(2))              
                 # RAFT collect a and b into d
                 self.add_output(f"platform_member{k+1}_d", val=np.zeros([n_height,2]), units="m")
+                
             self.add_input(f"member{k}:height", val=0.0, units="m")
             self.add_input(f"member{k}:layer_thickness", val=np.zeros((n_layers, n_height)), units="m")
             self.add_input(f"member{k}:rho", val=np.zeros(n_height-1), units="kg/m**3")
@@ -281,6 +282,7 @@ class RAFT_WEIS_Prep(om.ExplicitComponent):
                 outputs[f"platform_member{k+1}_Cd"][:, 1] = inputs[f"member{k}:Cdy"] if np.all(inputs[f"member{k}:Cdy"]>0.0) else 1
                 outputs[f"platform_member{k+1}_CaEnd"] = inputs[f"member{k}:CaEnd"] if np.all(inputs[f"member{k}:CaEnd"]>0.0) else 0
                 outputs[f"platform_member{k+1}_CdEnd"] = inputs[f"member{k}:CdEnd"] if np.all(inputs[f"member{k}:CdEnd"]>0.0) else 0
+
             # Ring stiffener discretization conversion
             if ( (float(inputs[f"member{k}:ring_stiffener_spacing"]) > 0.0) and
                  (float(inputs[f"member{k}:ring_stiffener_spacing"]) < 1.0) ):

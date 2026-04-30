@@ -232,11 +232,12 @@ class InputWriter_QBlade(object):
 
                 f.write('---------------------------------------- Parameters ----------------------------------\n')
                 f.write(f"{self.qb_vt['Aero']['rthick'][polar]*100.:<{object_length}}{' THICKNESS':<{keyword_length}} - the thickness of the corresponding airfoil\n")
-                f.write(f"{0:<{object_length}}{' ISDECOMPOSED':<{keyword_length}} - is the polar decomposed (add Cl_Sep, Cl_att and f_st columns)\n") # for now not possible                                                                                                                                                                                                                       
+                f.write(f"{0:<{object_length}}{' ISDECOMPOSED':<{keyword_length}} - is the polar decomposed (add Cl_Sep, Cl_att and f_st columns)\n") # for now not possible
                 f.write(f"{'REYNOLDS':<{object_length}}{Re_str} - Reynolds numbers for the imported polars\n")
                 f.write('\n')
 
                 f.write('---------------------------------------- Polar Data ----------------------------------\n')
+
                 
                 alpha_ref = np.asarray(self.qb_vt['Aero']['af_data'][polar][0]['Alpha'])
                 CL_all = []
@@ -264,6 +265,26 @@ class InputWriter_QBlade(object):
                     CL_all.append(cl)
                     CD_all.append(cd)
                     CM_all.append(cm)
+
+                # Start with AoA
+                polar_matrix = [alpha_ref]
+
+                # Append CL, CD, CM for each Reynolds
+                for itab in range(n_tabs):
+                    polar_matrix.extend([CL_all[itab], CD_all[itab], CM_all[itab]])
+
+                # Convert to (n_alpha, n_columns)
+                polar_matrix = np.column_stack(polar_matrix)
+
+                header = f"{'AOA [deg]':>12}"
+                for Re in Re_list:
+                    header += f"{'CL [-]':>14}{'CD [-]':>14}{'CM [-]':>14}"
+
+                f.write(header + '\n')
+
+                for row in polar_matrix:
+                    f.write(' '.join(['{: .8e}'.format(val) for val in row]) + '\n')
+                
 
                 # Start with AoA
                 polar_matrix = [alpha_ref]
@@ -851,6 +872,7 @@ class InputWriter_QBlade(object):
                     ln.append('{:<10f}'.format(self.qb_vt['QBladeOcean']['DIAMETER_rect'][i]))
                     f.write(" ".join(ln) + '\n')
                 f.write('\n')
+
             if 'NElements' in self.qb_vt['QBladeOcean']: # only write this table in case flexible members were defined
                 f.write('SUBELEMENTS\n')
                 f.write('ElemID     MASS_[kg/m]     Eix_[N.m^2]   EA_[N]   GJ_[N.m^2]   STRPIT_[deg]    KSX_[-] KSY_[-]   RGX_[-]  RGY_[-]  XCM_[-]  YCM_[-]  YCE_[-]  XCS_[-]  YCS_[-]  DIA_[m]  DAMP[-]\n')
@@ -949,6 +971,7 @@ class InputWriter_QBlade(object):
                     ln.append('{:.2f}'.format(0.0)) # Placeholder for alpha
                     f.write(" ".join(ln) + '\n')
                 f.write('\n')
+
             f.write('HYDROJOINTCOEFF\n')
             f.write('CoeffID JointID CdA CaA CpA\n')
             for i in range(len(self.qb_vt['QBladeOcean']['AxHyCoID'])):

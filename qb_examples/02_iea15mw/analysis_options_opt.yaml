@@ -6,7 +6,7 @@ general:
 design_variables:
   floating:
     joints:
-      flag: True
+      flag: False
       z_coordinate:
           - names: [main_keel, col1_keel, col2_keel, col3_keel]
             lower_bound: -50
@@ -36,7 +36,7 @@ constraints:
 
 driver:
   optimization:
-    flag: True
+    flag: False
     tol: 1.e-3            # Optimality tolerance
     max_iter: 5           # Maximum number of iterations (SLSQP)
     solver: LN_COBYLA     # Optimization solver. Other options are 'SLSQP' - 'CONMIN'

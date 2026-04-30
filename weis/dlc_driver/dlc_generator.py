@@ -10,6 +10,7 @@ from weis.aeroelasticse.utils import OLAFParams
 
 logger = logging.getLogger("wisdem/weis")
 
+
 def get_dlc_label_for_aep(dlc_labels):
     """
     Return the preferred DLC label to use for AEP-style power curve estimation.
@@ -21,6 +22,7 @@ def get_dlc_label_for_aep(dlc_labels):
         if label in dlc_labels:
             return label
     return None
+
 # TODO: not sure where this should live, so it's a global for now
 # This is a global that we copy into the DLC_Driver class as an attribute
 # Could it be an input yaml?

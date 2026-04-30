@@ -51,6 +51,15 @@ fatigue_channels_default = {
     'Y_b RootBend. Mom. BLD_1': FatigueParams(slope=10),   # 'RootMyb1': FatigueParams(slope=10),
     'Y_b RootBend. Mom. BLD_2': FatigueParams(slope=10),   # 'RootMyb2': FatigueParams(slope=10),
     'Y_b RootBend. Mom. BLD_3': FatigueParams(slope=10),   # 'RootMyb3': FatigueParams(slope=10),
+    'X_b RootBend. Mom. BLD_1': FatigueParams(slope=10),   # 'RootMxb1': FatigueParams(slope=10),
+    'X_b RootBend. Mom. BLD_2': FatigueParams(slope=10),   # 'RootMxb2': FatigueParams(slope=10),
+    'X_b RootBend. Mom. BLD_3': FatigueParams(slope=10),   # 'RootMxb3': FatigueParams(slope=10),
+    'Z_b RootBend. Mom. BLD_1': FatigueParams(slope=10),   # 'RootMzb1': FatigueParams(slope=10),
+    'Z_b RootBend. Mom. BLD_2': FatigueParams(slope=10),   # 'RootMzb2': FatigueParams(slope=10),
+    'Z_b RootBend. Mom. BLD_3': FatigueParams(slope=10),   # 'RootMzb3': FatigueParams(slope=10),
+    'X_tb Mom. TWR Bot. Constr.': FatigueParams(slope=4),
+    'Y_tb Mom. TWR Bot. Constr.': FatigueParams(slope=4), 
+    'Z_tb Mom. TWR Bot. Constr.': FatigueParams(slope=4),
     'TwrBsM': FatigueParams(slope=4),
     'XtbMom': FatigueParams(slope=4),
     'YtbMom': FatigueParams(slope=4),
@@ -288,7 +297,7 @@ class QBladeWrapper:
         else:
             raise ValueError("Version number not found in QBlade_dll path.")
         
-        mp_version = "2.0.9"
+        mp_version = "2.0.8.7"
 
         if version.parse(qb_version) < version.parse(mp_version):
             print("Error: QBlade version:", version.parse(qb_version), "not compatible with QBtoWEIS. Please use QBlade Version 2.0.9 or newer.")

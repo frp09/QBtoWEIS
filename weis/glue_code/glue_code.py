@@ -69,6 +69,7 @@ class WindPark(om.Group):
             n_PC = 1
         else:
             n_PC = len(modeling_options['ROSCO']['U_pc'])
+            n_PS = len(modeling_options['ROSCO']['ps_angles_pc'])
         tune_rosco_ivc.add_output('omega_pc',         val=np.zeros(n_PC), units='rad/s',     desc='Pitch controller natural frequency')
         tune_rosco_ivc.add_output('zeta_pc',          val=np.zeros(n_PC),                    desc='Pitch controller damping ratio')
         tune_rosco_ivc.add_output('omega_vs',         val=0.0, units='rad/s',     desc='Generator torque controller natural frequency')
@@ -79,6 +80,8 @@ class WindPark(om.Group):
         tune_rosco_ivc.add_output('IPC_Ki1p',         val=0.0,                    desc='Individual pitch controller 1p integral gain')
         tune_rosco_ivc.add_output('stability_margin', val=0.0,                    desc='Stability margin for robust tuning')
         tune_rosco_ivc.add_output('omega_pc_max',     val=0.0,                    desc='Maximum allowable omega for robust tuning')
+        tune_rosco_ivc.add_output('ps_angles_pc',     val=np.zeros(n_PS), units='rad',     desc='Minimum pitch saturation angle')  #FP
+        
         # optional inputs - not connected right now!!
         tune_rosco_ivc.add_output('max_pitch',        val=0.0, units='rad',       desc='Maximum pitch angle , {default = 90 degrees}')
         tune_rosco_ivc.add_output('min_pitch',        val=0.0, units='rad',       desc='Minimum pitch angle [rad], {default = 0 degrees}')
@@ -219,6 +222,7 @@ class WindPark(om.Group):
             self.connect('tune_rosco_ivc.ps_percent',       'sse_tune.tune_rosco.ps_percent') 
             self.connect('tune_rosco_ivc.omega_pc',         'sse_tune.tune_rosco.omega_pc')
             self.connect('tune_rosco_ivc.zeta_pc',          'sse_tune.tune_rosco.zeta_pc')
+            self.connect('tune_rosco_ivc.ps_angles_pc',     'sse_tune.tune_rosco.ps_angles_pc')
             self.connect('tune_rosco_ivc.omega_vs',         'sse_tune.tune_rosco.omega_vs')
             self.connect('tune_rosco_ivc.zeta_vs',          'sse_tune.tune_rosco.zeta_vs')
             self.connect('tune_rosco_ivc.IPC_Kp1p',         'sse_tune.tune_rosco.IPC_Kp1p')
@@ -939,6 +943,7 @@ class WindPark(om.Group):
                 self.connect('aeroelastic.Max_PtfmPitch',      'outputs_2_screen_weis.Max_PtfmPitch')
                 self.connect('tune_rosco_ivc.omega_pc',        'outputs_2_screen_weis.omega_pc')
                 self.connect('tune_rosco_ivc.zeta_pc',         'outputs_2_screen_weis.zeta_pc')
+                self.connect('tune_rosco_ivc.ps_angles_pc',    'outputs_2_screen_weis.ps_angles_pc')
                 self.connect('tune_rosco_ivc.omega_vs',        'outputs_2_screen_weis.omega_vs')
                 self.connect('tune_rosco_ivc.zeta_vs',         'outputs_2_screen_weis.zeta_vs')
                 self.connect('tune_rosco_ivc.Kp_float',        'outputs_2_screen_weis.Kp_float')
@@ -1139,7 +1144,7 @@ class WindPark(om.Group):
                     for k, kname in enumerate(modeling_options["floating"]["members"]["name"]):
                         idx = modeling_options["floating"]["members"]["name2idx"][kname]
                         #self.connect(f"floating.memgrp{idx}.outer_diameter",                f"aeroelastic_qblade.member{k}.outer_diameter_in")
-                        self.connect(f"floating.memgrp{idx}.s",                             f"aeroelastic_qblade.member{k}:s")                                                                                                                                         
+                        self.connect(f"floating.memgrp{idx}.s",                             f"aeroelastic_qblade.member{k}:s")
                         self.connect(f"floatingse.member{k}.wall_thickness",                f"aeroelastic_qblade.member{k}:wall_thickness")
                         self.connect(f"floating.memgrid{idx}.ca_usr_grid",                 f"aeroelastic_qblade.member{k}:Ca")
                         self.connect(f"floating.memgrid{idx}.cd_usr_grid",                 f"aeroelastic_qblade.member{k}:Cd")
@@ -1152,7 +1157,7 @@ class WindPark(om.Group):
                             self.connect(f"floating.memgrid{idx}.cdy_usr_grid",             f"aeroelastic_qblade.member{k}:Cdy")
                         else:
                             self.connect(f"floatingse.member{k}.outer_diameter",            f"aeroelastic_qblade.member{k}:outer_diameter")
-
+                
                     if modeling_options['flags']['mooring']:
                         self.connect('mooring.line_diameter',               'aeroelastic_qblade.line_diameter')
                         self.connect('mooring.line_mass_density',           'aeroelastic_qblade.line_mass_density')
@@ -1361,6 +1366,7 @@ class WindPark(om.Group):
                 self.connect('aeroelastic_qblade.Max_PtfmPitch',      'outputs_2_screen_weis.Max_PtfmPitch')
                 self.connect('tune_rosco_ivc.omega_pc',        'outputs_2_screen_weis.omega_pc')
                 self.connect('tune_rosco_ivc.zeta_pc',         'outputs_2_screen_weis.zeta_pc')
+                self.connect('tune_rosco_ivc.ps_angles_pc',    'outputs_2_screen_weis.ps_angles_pc')
                 self.connect('tune_rosco_ivc.omega_vs',        'outputs_2_screen_weis.omega_vs')
                 self.connect('tune_rosco_ivc.zeta_vs',         'outputs_2_screen_weis.zeta_vs')
                 self.connect('tune_rosco_ivc.Kp_float',        'outputs_2_screen_weis.Kp_float')

@@ -20,7 +20,7 @@ from openfast_io.FAST_reader         import InputReader_OpenFAST
 import weis.aeroelasticse.runFAST_pywrapper as fastwrap
 from openfast_io.FAST_post         import FAST_IO_timeseries
 from wisdem.floatingse.floating_frame import NULL, NNODES_MAX, NELEM_MAX
-from weis.dlc_driver.dlc_generator    import DLCGenerator
+from weis.dlc_driver.dlc_generator    import DLCGenerator, get_dlc_label_for_aep
 from weis.aeroelasticse.CaseGen_General import CaseGen_General
 from functools import partial
 from pCrunch import PowerProduction
@@ -2459,11 +2459,12 @@ class FASTLoadCases(ExplicitComponent):
 
         modopts = self.options['modeling_options']
         DLCs = [i_dlc['DLC'] for i_dlc in modopts['DLC_driver']['DLCs']]
-        if 'AEP' in DLCs:
-            DLC_label_for_AEP = 'AEP'
-        else:
+        DLC_label_for_AEP = get_dlc_label_for_aep(DLCs)
+        if DLC_label_for_AEP is None:
             DLC_label_for_AEP = '1.1'
-            logger.warning('WARNING: DLC 1.1 is being used for AEP calculations.  Use the AEP DLC for more accurate wind modeling with constant TI.')
+            logger.warning('WARNING: No dedicated AEP-like DLC was found. Falling back to DLC 1.1 logic if matching cases exist.')
+        elif DLC_label_for_AEP != 'AEP':
+            logger.warning(f'WARNING: DLC {DLC_label_for_AEP} is being used for AEP calculations. Use the AEP DLC for more accurate wind modeling with constant TI.')
 
         idx_pwrcrv = []
         U = []
