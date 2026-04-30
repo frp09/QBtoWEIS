@@ -285,26 +285,6 @@ class InputWriter_QBlade(object):
                 for row in polar_matrix:
                     f.write(' '.join(['{: .8e}'.format(val) for val in row]) + '\n')
                 
-
-                # Start with AoA
-                polar_matrix = [alpha_ref]
-
-                # Append CL, CD, CM for each Reynolds
-                for itab in range(n_tabs):
-                    polar_matrix.extend([CL_all[itab], CD_all[itab], CM_all[itab]])
-
-                # Convert to (n_alpha, n_columns)
-                polar_matrix = np.column_stack(polar_matrix)
-
-                header = f"{'AOA [deg]':>12}"
-                for Re in Re_list:
-                    header += f"{'CL [-]':>14}{'CD [-]':>14}{'CM [-]':>14}"
-
-                f.write(header + '\n')
-
-                for row in polar_matrix:
-                    f.write(' '.join(['{: .8e}'.format(val) for val in row]) + '\n')
-                
     def write_main_file(self):
         # Write main file
         # self.write_qblade_input()
