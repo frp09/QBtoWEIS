@@ -190,7 +190,8 @@ properties:
                     members:
                         optional:
                             - CaEnd
-                            - CdEnd                
+                            - CdEnd
+                
 
         
 definitions:

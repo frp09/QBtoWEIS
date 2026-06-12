@@ -257,7 +257,7 @@ class InputWriter_QBlade(object):
                         cd = np.interp(alpha_ref, alpha_tab, cd)
                         cm = np.interp(alpha_ref, alpha_tab, cm)
 
-                    alpha_chk, cl, cd, cm = checkPlr(alpha_ref.copy(), cl, cd, cm, polar, itab)                                                                                  
+                    alpha_chk, cl, cd, cm = checkPlr(alpha_ref.copy(), cl, cd, cm, polar, itab)
 
                     if itab == 0:
                         alpha_ref = alpha_chk
@@ -285,6 +285,7 @@ class InputWriter_QBlade(object):
                 for row in polar_matrix:
                     f.write(' '.join(['{: .8e}'.format(val) for val in row]) + '\n')
                 
+
     def write_main_file(self):
         # Write main file
         # self.write_qblade_input()
@@ -725,7 +726,7 @@ class InputWriter_QBlade(object):
             f.write(f"{str(self.qb_vt['QBladeOcean']['ISFLOATING']):<{object_length}}{'ISFLOATING':<{keyword_length}} - if the structure is fixed the joint coordinates are assigned in a coordinate system with O(0,0,0) at the mudline, for floaters O(0,0,0) is at the MSL and marks the floaters's NP\n")
             f.write(f"{str(self.qb_vt['QBladeOcean']['WATERDENSITY']):<{object_length}}{'WATERDENSITY':<{keyword_length}} -design density, used in flooded member mass calculations\n")
             f.write(f"{str(self.qb_vt['QBladeOcean']['WAVEKINEVAL_MOR']):<{object_length}}{'WAVEKINEVAL_MOR':<{keyword_length}} - 0 - local evaluation, 1 - eval at fixed ref pos, 2 - eval at lagged position\n")
-            f.write(f"{str(self.qb_vt['QBladeOcean']['WAVEKINEVAL_POT']):<{object_length}}{'WAVEKINEVAL_POT':<{keyword_length}} - 0 - local evaluation, 1 - eval at fixed ref pos, 2 - eval at lagged position\n")
+            f.write(f"{str(self.qb_vt['QBladeOcean']['WAVEKINEVAL_POT']):<{object_length}}{'WAVEKINEVAL_MOR':<{keyword_length}} - 0 - local evaluation, 1 - eval at fixed ref pos, 2 - eval at lagged position\n")
             f.write(f"{str(self.qb_vt['QBladeOcean']['WAVEKINTAU']):<{object_length}}{'WAVEKINTAU':<{keyword_length}} - time constant for the lagged waveKin position evaluation\n")
             if self.qb_vt['QBladeOcean']['USEADVANCEDBUOYANCY']:
                 f.write(f"{str(self.qb_vt['QBladeOcean']['ADVANCEDBUOYANCY']):<{object_length}}{'ADVANCEDBUOYANCY':<{keyword_length}} - using an advanced discretization technique (N must be a square int number) to calculate buoyancy of partially submerged members, especially usefull if \"lying\" cylinders are used to generate the draft\n")

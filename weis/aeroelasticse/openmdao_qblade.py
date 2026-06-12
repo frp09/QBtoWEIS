@@ -254,6 +254,7 @@ class QBLADELoadCases(ExplicitComponent):
                     else:
                         self.add_input(f"member{k}:outer_diameter", np.zeros(n_height_mem), units="m")
                     self.add_input(f"member{k}:wall_thickness", np.zeros(n_height_mem-1), units="m")
+            
             # Blade composit layup info (used for fatigue analysis)
             self.add_input('sc_ss_mats',   val=np.zeros((n_span, n_mat)),        desc="spar cap, suction side,  boolean of materials in each composite layer spanwise, passed as floats for differentiablity, used for Fatigue Analysis")
             self.add_input('sc_ps_mats',   val=np.zeros((n_span, n_mat)),        desc="spar cap, pressure side, boolean of materials in each composite layer spanwise, passed as floats for differentiablity, used for Fatigue Analysis")
@@ -265,7 +266,6 @@ class QBLADELoadCases(ExplicitComponent):
             if self.options["modeling_options"]["flags"]["mooring"]:
                 n_nodes = mooropt["n_nodes"]
                 n_lines = mooropt["n_lines"]
-                self.add_input('mooring_MBL',                   val=np.zeros(n_lines), units='N')
                 self.add_input('line_diameter',                 val=np.zeros(n_lines), units='m')
                 self.add_input('line_mass_density',             val=np.zeros(n_lines), units='kg/m')
                 self.add_input('line_stiffness',                val=np.zeros(n_lines), units='N')
@@ -428,14 +428,6 @@ class QBLADELoadCases(ExplicitComponent):
         self.add_output('Std_PtfmPitch',        val=0.0,                    units='deg',    desc='standard deviation of platform pitch angle')
         self.add_output('Max_Offset',           val=0.0,                    units='m',      desc='Maximum distance in surge/sway direction')
         self.add_output('Mean_PtfmPitch',       val=0.0,                                    desc='Maximum of mean platform pitch angles over a set of QBlade simulations')
-
-        # Mooring line outputs
-        self.add_output('Max_MoorLineTension1',    val=0.0,                    units='N',      desc='Maximum tension in mooring line 1')
-        self.add_output('Max_MoorLineTension2',    val=0.0,                    units='N',      desc='Maximum tension in mooring line 2')
-        self.add_output('Max_MoorLineTension3',    val=0.0,                    units='N',      desc='Maximum tension in mooring line 3')    
-        self.add_output('moor_axial_load_ratio1',  val=0.0,                    units='N',      desc='Maximum axial load in mooring line 1')
-        self.add_output('moor_axial_load_ratio2',  val=0.0,                    units='N',      desc='Maximum axial load in mooring line 2')
-        self.add_output('moor_axial_load_ratio3',  val=0.0,                    units='N',      desc='Maximum axial load in mooring line 3')
 
         # Fatigue output
         self.add_output('damage_blade_root_sparU',  val=0.0, desc="Miner's rule cumulative damage to upper spar cap at blade root")
@@ -1345,14 +1337,14 @@ class QBLADELoadCases(ExplicitComponent):
                 qb_vt['QBladeOcean']['AxHyCoJnts']= ijoints
                 qb_vt['QBladeOcean']['CdA'] = CdA_arr
                 qb_vt['QBladeOcean']['CaA'] = CaA_arr
-                qb_vt['QBladeOcean']['CpA'] = CpA_arr                                                                      
+                qb_vt['QBladeOcean']['CpA'] = CpA_arr
             else:
                 qb_vt['QBladeOcean']['AxHyCoID'] = np.empty(0)
             qb_vt['QBladeOcean']['IsBuoy'] = np.ones_like(imembers)*qb_vt['QBladeOcean']['IsBuoy']
             qb_vt['QBladeOcean']['MaGrID'] = np.zeros_like(imembers)
             qb_vt['QBladeOcean']['FldArea'] = np.zeros_like(imembers)
             qb_vt['QBladeOcean']['MemberName'] = members_name
-           
+
             # Determine discretization length of the members. The length of a discretized element is set to 10% of the distance between the joints
             if not qb_vt.get('QBladeOcean', {}).get('ElmDsc'):  # if provided in the modeling_options, the user can define the discretization length
                 ElmDsc = np.zeros(0)
@@ -1956,9 +1948,7 @@ class QBLADELoadCases(ExplicitComponent):
             
             if modopt['flags']['floating']:
                 channels_out += ["NP Trans. X_g [m]", "NP Trans. Y_g [m]", "NP Trans. Z_g [m]", "NP Roll X_l [deg]", "NP Pitch Y_l [deg]", "NP Yaw Z_l [deg]"]
-                channels_out += ['X_l Mean Tension MOO line1 [N]', 'X_l Mean Tension MOO line2 [N]', 'X_l Mean Tension MOO line3 [N]']
-                channels_out += ['Abs. For. MOO line1 - Floater [N]', 'Abs. For. MOO line2 - Floater [N]', 'Abs. For. MOO line3 - Floater [N]']
-                
+
             # Sensors required for monopile post-processing
             if modopt['flags']['monopile']:
                 for idx, member in enumerate (self.qb_vt['QBladeOcean']['SUB_Sensors']):
@@ -2163,12 +2153,6 @@ class QBLADELoadCases(ExplicitComponent):
                 except Exception as e:
                     logger.error(f"[MONOPILE LOADING] Error in get_monopile_loading: {e}", exc_info=True)
                     return outputs
-            if modopt['flags']['mooring']:
-                try:
-                    outputs = self.get_mooring_loading(summary_stats, inputs, outputs)
-                except Exception as e:
-                    logger.error(f"[MOORING LOADING] Error in get_mooring_loading: {e}", exc_info=True)
-                    return outputs
 
             # AEP calculation is not very robust when various simulations in an iteration fail. to avoid crashing a full optimization, we wrap it in a try/except block
             try:
@@ -2328,7 +2312,7 @@ class QBLADELoadCases(ExplicitComponent):
         if len(U) > 1 and self.qb_vt['Turbine']['CONTROLLERTYPE'] > 0 and self.qb_vt['QSim']['DLCGenerator']:
             pp = PowerProduction(discrete_inputs['turbine_class'])
             AEP, perf_data = pp.AEP(stats_pwrcrv, U, pwr_curv_vars_of)
-
+            
             # to avoid dimension missmatch, when a failed simulation is present
             for idx_out, u in enumerate(perf_data['U']):
                 idx_sim = np.where(np.unique(U) == u)[0][0]
@@ -2368,39 +2352,23 @@ class QBLADELoadCases(ExplicitComponent):
             outputs['V_out'] = sum_stats['X_g Inflow Vel. at Hub']['mean'].mean()
 
         return outputs
-        
-    def get_mooring_loading(self, sum_stats, inputs, outputs):      
-        gamma = 2.4   #safety factor from https://docs.nrel.gov/docs/fy25osti/91416.pdf +20%
-        # this needs to be added to "ADDCHANNELS" input
+    
+
+    def get_rotor_loading(self, sum_stats, outputs):
+            
+            # this needs to be added to "ADDCHANNELS" input
         try:
-            outputs['Max_MoorLineTension1'] = np.max(sum_stats['Abs. For. MOO line1 - Floater']['mean'])*1000 # [N]
-            outputs['moor_axial_load_ratio1'] = gamma*outputs['Max_MoorLineTension1']/inputs['mooring_MBL'][0] 
+            #outputs['AeroThrust'] = np.max(sum_stats['Aerodynamic Thrust']['max'])
+            outputs['AeroThrust'] = np.max(sum_stats['Aerodynamic Thrust']['mean'])
+            outputs['max_AeroThrust_ratio'] = 0.1
         except Exception as e: 
-            outputs['Max_MoorLineTension1'] = 0
-            outputs['moor_axial_load_ratio1'] = 0
-            print('[WARNING] : Could not assign value for "Max_MoorLineTension1". Please Make sure to add "Abs. For. MOO line1 - Floater [N]" to "ADDCHANNELS" in "modeling options" file. ')
+            outputs['AeroThrust'] = 0
+            outputs['max_AeroThrust_ratio'] = 0
+            print('[WARNING] : Could not assign value for "Aerodynamic Thrust". Please Make sure to add "Aerodynamic Thrust [N]" to "ADDCHANNELS" in "modeling options" file. ')
             print('[ERROR] ', str(e))
 
-        try:
-            outputs['Max_MoorLineTension2'] = np.max(sum_stats['Abs. For. MOO line2 - Floater']['mean'])*1000
-            outputs['moor_axial_load_ratio2'] = gamma*outputs['Max_MoorLineTension2']/inputs['mooring_MBL'][1] 
-        except Exception as e: 
-            outputs['Max_MoorLineTension2'] = 0
-            outputs['moor_axial_load_ratio2'] = 0
-            print('[WARNING] : Could not assign value for "Max_MoorLineTension2". Please Make sure to add "Abs. For. MOO line2 - Floater [N]" to "ADDCHANNELS" in "modeling options" file. ')
-            print('[ERROR] ', str(e))
-            
-        try:
-            outputs['Max_MoorLineTension3'] = np.max(sum_stats['Abs. For. MOO line3 - Floater']['mean'])*1000
-            outputs['moor_axial_load_ratio3'] = gamma*outputs['Max_MoorLineTension3']/inputs['mooring_MBL'][2] 
-        except Exception as e: 
-            outputs['Max_MoorLineTension3'] = 0
-            outputs['moor_axial_load_ratio3'] = 0
-            print('[WARNING] : Could not assign value for "Max_MoorLineTension3". Please Make sure to add "Abs. For. MOO line3 - Floater [N]" to "ADDCHANNELS" in "modeling options" file. ')
-            print('[ERROR] ', str(e))
-            
-        return outputs   
-        
+        return outputs
+          	
     def get_blade_loading(self, sum_stats, extreme_table, inputs, outputs):
             
         """
@@ -2712,14 +2680,11 @@ class QBLADELoadCases(ExplicitComponent):
         outputs['Max_PtfmPitch']  = np.max(sum_stats['NP Pitch Y_l']['max'])
         outputs['Mean_PtfmPitch']  = np.max(sum_stats['NP Pitch Y_l']['mean'])
 
-        max_offset_ts = 0 #modfied, added
-        outputs['Max_Offset'] = 0 #modfied, added
-        
         # Max platform offset        
         for timeseries in chan_time:
             max_offset_ts = np.sqrt(timeseries['NP Trans. X_g']**2 + timeseries['NP Trans. Y_g']**2).max()
-            outputs['Max_Offset'] = max(outputs['Max_Offset'], max_offset_ts)  #modfied
-            
+            outputs['Max_Offset'] = np.r_[outputs['Max_Offset'],max_offset_ts].max()
+
         return outputs
 
     def calc_fractional_curved_length(self, control_points):

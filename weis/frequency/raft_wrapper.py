@@ -158,10 +158,10 @@ class RAFT_WEIS_Prep(om.ExplicitComponent):
                 self.add_input(f"member{k}:Cay", val=np.zeros(n_height))
                 self.add_input(f"member{k}:Cdy", val=np.zeros(n_height))
                 self.add_input(f"member{k}:CaEnd", val=np.zeros(2))
-                self.add_input(f"member{k}:CdEnd", val=np.zeros(2))              
+                self.add_input(f"member{k}:CdEnd", val=np.zeros(2))
+                
                 # RAFT collect a and b into d
                 self.add_output(f"platform_member{k+1}_d", val=np.zeros([n_height,2]), units="m")
-                
             self.add_input(f"member{k}:height", val=0.0, units="m")
             self.add_input(f"member{k}:layer_thickness", val=np.zeros((n_layers, n_height)), units="m")
             self.add_input(f"member{k}:rho", val=np.zeros(n_height-1), units="kg/m**3")

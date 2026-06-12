@@ -171,8 +171,7 @@ class WindPark(om.Group):
 
                 self.connect('nacelle.gear_ratio',              'sse_tune.tune_rosco.gear_ratio')
                 self.connect("blade.high_level_blade_props.rotor_radius", "sse_tune.tune_rosco.R")
-                #self.connect('rotorse.I_all_blades',            'sse_tune.tune_rosco.rotor_inertia', src_indices=[0])
-                self.connect('drivese.rna_I_TT',            'sse_tune.tune_rosco.rotor_inertia', src_indices=[0])
+                self.connect('rotorse.I_all_blades',            'sse_tune.tune_rosco.rotor_inertia', src_indices=[0])
                 self.connect('rotorse.rs.frame.flap_mode_freqs','sse_tune.tune_rosco.flap_freq', src_indices=[0])
                 self.connect('rotorse.rs.frame.edge_mode_freqs','sse_tune.tune_rosco.edge_freq', src_indices=[0])
                 self.connect('rotorse.rp.powercurve.rated_efficiency', 'sse_tune.tune_rosco.generator_efficiency')
@@ -1167,7 +1166,6 @@ class WindPark(om.Group):
                         self.connect('mooring.line_transverse_added_mass',  'aeroelastic_qblade.line_transverse_added_mass')
                         self.connect('mooring.line_transverse_drag',        'aeroelastic_qblade.line_transverse_drag')
                         self.connect('mooring.node_names',                  'aeroelastic_qblade.node_names')
-                        self.connect('mooring.line_breaking_load',          'aeroelastic_qblade.mooring_MBL')
                     
                     # For fatigue
                 self.connect('configuration.lifetime',                              'aeroelastic_qblade.lifetime')
