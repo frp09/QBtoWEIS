@@ -2400,6 +2400,22 @@ class QBLADELoadCases(ExplicitComponent):
             print('[ERROR] ', str(e))
             
         return outputs   
+
+    def get_rotor_loading(self, sum_stats, outputs):
+            
+            # this needs to be added to "ADDCHANNELS" input
+        try:
+            #outputs['AeroThrust'] = np.max(sum_stats['Aerodynamic Thrust']['max'])
+            outputs['AeroThrust'] = np.max(sum_stats['Aerodynamic Thrust']['mean'])
+            outputs['max_AeroThrust_ratio'] = 0.1
+        except Exception as e: 
+            outputs['AeroThrust'] = 0
+            outputs['max_AeroThrust_ratio'] = 0
+            print('[WARNING] : Could not assign value for "Aerodynamic Thrust". Please Make sure to add "Aerodynamic Thrust [N]" to "ADDCHANNELS" in "modeling options" file. ')
+            print('[ERROR] ', str(e))
+
+        return outputs
+        
         
     def get_blade_loading(self, sum_stats, extreme_table, inputs, outputs):
             
