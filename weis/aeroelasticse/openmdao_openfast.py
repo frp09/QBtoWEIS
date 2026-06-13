@@ -2524,20 +2524,34 @@ class FASTLoadCases(ExplicitComponent):
         for k in range(dlc_generator.n_cases):
             U[k] = dlc_generator.cases[k].URef
             
-            if dlc_generator.cases[k].label in ['1.2', '6.4', '7.2']:
+            if dlc_generator.cases[k].label in ['1.2', '6.4', '7.2', 'Custom']:
                 ifat.append( k )
 
         # If fatigue DLCs are present, then limit analysis to those only
         if len(ifat) > 0:
+            if any(dlc_generator.cases[k].label == 'Custom' for k in ifat):
+                ifat = [k for k in ifat if dlc_generator.cases[k].label == 'Custom']
             U = U[ifat]
-            DELs = DELs.iloc[ ifat ]
-            damage = damage.iloc[ ifat ]
-        
-        # Get wind distribution probabilities, make sure they are normalized
-        # This should also take care of averaging across seeds
-        pp = PowerProduction(discrete_inputs['turbine_class'])
-        ws_prob = pp.prob_WindDist(U, disttype='pdf')
-        ws_prob /= ws_prob.sum()
+            DELs = DELs.iloc[ifat]
+            damage = damage.iloc[ifat]
+
+        if len(ifat) > 0 and all(dlc_generator.cases[k].label == 'Custom' for k in ifat):
+            case_prob = np.array([dlc_generator.cases[k].probability for k in ifat])
+            prob_sum = np.sum(case_prob)
+            if len(case_prob) == 0 or prob_sum <= 0.0:
+                raise Exception('Custom DLC case probabilities must be defined with a positive sum before fatigue weighting')
+            if abs(prob_sum - 1.0) > 1.e-3:
+                logger.warning(f'WARNING: Custom DLC case probabilities sum to {prob_sum:.6f}, not 1.0. Fatigue DEL/damage weighting will use the provided partial probability mass.')
+            # Preserve joint-state weighting from the Custom lookup table at case level.
+            ws_prob = case_prob
+        else:
+            logger.warning('WARNING: Fatigue DEL/damage weighting is falling back to Weibull wind-speed probabilities because valid case-level Custom DLC probabilities were not available.')
+
+            # Get wind distribution probabilities, make sure they are normalized
+            # This should also take care of averaging across seeds
+            pp = PowerProduction(discrete_inputs['turbine_class'])
+            ws_prob = pp.prob_WindDist(U, disttype='pdf')
+            ws_prob /= ws_prob.sum()
 
         # Scale all DELs and damage by probability and collapse over the various DLCs (inner dot product)
         # Also work around NaNs
@@ -2863,4 +2877,3 @@ def apply_olaf_parameters(dlc_generator,fst_vt):
             case_input[("AeroDyn","OLAF","nNWPanelsFree")] = {'vals': nNWPanelsFree, 'group': wind_group}
             case_input[("AeroDyn","OLAF","nFWPanels")] = {'vals': nFWPanels, 'group': wind_group}
             case_input[("AeroDyn","OLAF","nFWPanelsFree")] = {'vals': nFWPanelsFree, 'group': wind_group}
-

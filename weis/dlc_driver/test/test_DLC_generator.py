@@ -45,6 +45,51 @@ class TestIECWind(unittest.TestCase):
 
         np.testing.assert_equal(n_ws_aep, 6)
 
+    def test_custom_dlc_probabilities_follow_seed_expansion(self):
+
+        ws_cut_in = 4.
+        ws_cut_out = 25.
+        ws_rated = 10.
+        wind_speed_class = 'I'
+        wind_turbulence_class = 'B'
+
+        weis_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))) + os.sep
+        fname_modeling_options = os.path.join(weis_dir, 'examples', '05_IEA-3.4-130-RWT', 'modeling_options.yaml')
+        modeling_options = sch.load_modeling_yaml(fname_modeling_options)
+
+        dlc_opt = copy.deepcopy(modeling_options['DLC_driver']['DLCs'][0])
+        dlc_opt.update({
+            'DLC': 'Custom',
+            'n_seeds': 2,
+            'wind_speed': [6.0, 8.0],
+            'wave_height': [1.1, 2.2],
+            'wave_period': [6.8, 8.8],
+            'wave_heading': [0.0, 30.0],
+            'probabilities': [0.2, 0.8],
+            'yaw_misalign': [0.0],
+        })
+
+        dlc_generator = DLCGenerator(
+            ws_cut_in,
+            ws_cut_out,
+            ws_rated,
+            wind_speed_class,
+            wind_turbulence_class,
+            modeling_options['DLC_driver']['fix_wind_seeds'],
+            modeling_options['DLC_driver']['fix_wave_seeds'],
+            modeling_options['DLC_driver']['metocean_conditions'],
+            modeling_options['DLC_driver']
+        )
+        dlc_generator.generate(dlc_opt['DLC'], dlc_opt)
+
+        np.testing.assert_equal(dlc_generator.n_cases, 4)
+        np.testing.assert_allclose([c.URef for c in dlc_generator.cases], [6.0, 6.0, 8.0, 8.0])
+        np.testing.assert_allclose([c.wave_height for c in dlc_generator.cases], [1.1, 1.1, 2.2, 2.2])
+        np.testing.assert_allclose([c.wave_period for c in dlc_generator.cases], [6.8, 6.8, 8.8, 8.8])
+        np.testing.assert_allclose([c.wave_heading for c in dlc_generator.cases], [0.0, 0.0, 30.0, 30.0])
+        np.testing.assert_allclose([c.probability for c in dlc_generator.cases], [0.1, 0.1, 0.4, 0.4])
+        np.testing.assert_allclose(sum(c.probability for c in dlc_generator.cases), 1.0)
+
     def test_generator(self):
 
         # Wind turbine inputs that will eventually come in from somewhere

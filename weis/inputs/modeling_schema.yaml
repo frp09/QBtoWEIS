@@ -667,7 +667,7 @@ properties:
                                 maximum: 10.0
                         probabilities:
                             type: array
-                            description: Probability of occurrance for each case. This entry is relevant only for DLC 1.2 and 6.4. This array must currently have either length=1, i.e. one constant value, or the same length of the array wind_speed.
+                            description: Probability of occurrance for each case. This entry is relevant for fatigue DLCs, including DLC 1.2, 6.4, and Custom. For Custom, this array must define the probability of each lookup-table row before seed expansion.
                             default: [1.]
                             items:
                                 type: number

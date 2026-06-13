@@ -2077,7 +2077,7 @@ class QBLADELoadCases(ExplicitComponent):
 
             i_qb_vt['QBladeOcean']['SIGHEIGHT']    = case_list[idx][('QBladeOcean', 'SIGHEIGHT')]
             i_qb_vt['QBladeOcean']['PEAKPERIOD']   = case_list[idx][('QBladeOcean', 'PEAKPERIOD')]
-            # i_qb_vt['QBladeOcean']['DIRMEAN']      = case_list[idx][('QBladeOcean', 'DIRMEAN')]
+            i_qb_vt['QBladeOcean']['DIRMEAN']      = case_list[idx][('QBladeOcean', 'DIRMEAN')]
             # i_qb_vt['QBladeOcean']['GAMMA']        = case_list[idx][('QBladeOcean', 'GAMMA')]
             i_qb_vt['QBladeOcean']['RANDSEED']     = case_list[idx][('QBladeOcean', 'RANDSEED')] % 65535 # 65535 is the maximum rand seed QBladeOcean allows
 
@@ -2199,21 +2199,58 @@ class QBLADELoadCases(ExplicitComponent):
 
     def get_weighted_DELs(self, DELs, damage, discrete_inputs, outputs, dlc_generator, failed_sim_ids):
         modopt = self.options['modeling_options']
-        if self.qb_vt['QSim']['WNDTYPE'] == 1 or self.qb_vt['QSim']['DLCGenerator']:
+        custom_ids = [i for i, c in enumerate(dlc_generator.cases) if c.label == 'Custom'] if dlc_generator is not None else []
+
+        if custom_ids:
+            case_prob_all = np.array([dlc_generator.cases[i].probability for i in custom_ids])
+            prob_sum = np.sum(case_prob_all)
+            if len(case_prob_all) == 0 or prob_sum <= 0.0:
+                raise Exception('Custom DLC case probabilities must be defined with a positive sum before fatigue weighting')
+            if abs(prob_sum - 1.0) > 1.e-3:
+                logger.warning(f'WARNING: Custom DLC case probabilities sum to {prob_sum:.6f}, not 1.0. Fatigue DEL/damage weighting will use the provided partial probability mass.')
+
+            failed_sim_ids = failed_sim_ids or []
+            active_ids = [i for i in custom_ids if i not in failed_sim_ids]
+            U = np.array([dlc_generator.cases[i].URef for i in active_ids])
+            DELs = DELs.iloc[active_ids]
+            damage = damage.iloc[active_ids]
+
+            # Preserve joint-state weighting from the Custom lookup table at case level.
+            ws_prob = np.array([dlc_generator.cases[i].probability for i in active_ids])
+            active_prob_sum = np.sum(ws_prob)
+            if active_prob_sum <= 0.0:
+                raise Exception('All Custom DLC probability mass was lost after filtering failed simulations')
+            if active_prob_sum < prob_sum - 1.e-12:
+                logger.warning(
+                    f'WARNING: Failed Custom DLC simulations removed probability mass of {prob_sum - active_prob_sum:.6f}. '
+                    f'Fatigue DEL/damage weighting will use the remaining probability mass ({active_prob_sum:.6f}).'
+                )
+
+        elif self.qb_vt['QSim']['WNDTYPE'] == 1 or self.qb_vt['QSim']['DLCGenerator']:
             U = self.qb_vt['QTurbSim']['URef']    
             
             # remove failed simulations from the list of cases to analyze
             if failed_sim_ids:
                 indices_to_remove = [i for i in failed_sim_ids]
                 U = [u for idx, u in enumerate(U) if idx not in indices_to_remove]
+
+            logger.warning('WARNING: Fatigue DEL/damage weighting is falling back to Weibull wind-speed probabilities because valid case-level Custom DLC probabilities were not available.')
+
+            # Get wind distribution probabilities, make sure they are normalized
+            pp = PowerProduction(discrete_inputs['turbine_class'])
+            ws_prob = pp.prob_WindDist(U, disttype='pdf')
+            # print("Wind speeds and corresponding probabilities, wind speeds: ", np.unique(U), "probablities: ", np.unique(ws_prob))
+            ws_prob /= ws_prob.sum()
         else:
             U = self.qb_vt['QSim']['MEANINF']
-      
-        # Get wind distribution probabilities, make sure they are normalized
-        pp = PowerProduction(discrete_inputs['turbine_class'])
-        ws_prob = pp.prob_WindDist(U, disttype='pdf')
-        # print("Wind speeds and corresponding probabilities, wind speeds: ", np.unique(U), "probablities: ", np.unique(ws_prob))
-        ws_prob /= ws_prob.sum()
+
+            logger.warning('WARNING: Fatigue DEL/damage weighting is falling back to Weibull wind-speed probabilities because valid case-level Custom DLC probabilities were not available.')
+
+            # Get wind distribution probabilities, make sure they are normalized
+            pp = PowerProduction(discrete_inputs['turbine_class'])
+            ws_prob = pp.prob_WindDist(U, disttype='pdf')
+            # print("Wind speeds and corresponding probabilities, wind speeds: ", np.unique(U), "probablities: ", np.unique(ws_prob))
+            ws_prob /= ws_prob.sum()
         
         
         # Scale all DELs and damage by probability and collapse over the various DLCs (inner dot product)
@@ -2415,7 +2452,6 @@ class QBLADELoadCases(ExplicitComponent):
             print('[ERROR] ', str(e))
 
         return outputs
-        
         
     def get_blade_loading(self, sum_stats, extreme_table, inputs, outputs):
             
