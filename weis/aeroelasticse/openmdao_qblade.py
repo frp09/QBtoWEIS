@@ -1173,28 +1173,17 @@ class QBLADELoadCases(ExplicitComponent):
                 qb_vt['QBladeOcean']['SubConstr_DoF_rZ'] = np.ones_like(subconstraint_TP)
 
 
+            if not modopt['flags']['floating']:
+                n_member = 0
+                member_joint_start = {}
+                member_joint_end = {}
+
             ## The following needs to be set for all offshore substructure files:
             # Hydro Coefficients floater    
             floater_hydro_cdN = np.empty(0)
             floater_hydro_caN = np.empty(0)
             floater_hydro_cpN = np.empty(0) 
             nfloater_hydro_coeffs = 0
-
-            if modopt['flags']['floating'] and member_cd_reduced.shape[0] != n_members:
-                raise RuntimeError(
-                    f"QBladeOcean: member coefficient bookkeeping mismatch (n_members={n_members}, cd_entries={member_cd_reduced.shape[0]})."
-                )
-
-            if qb_vt['QBladeOcean']['POTFLOW']:
-                if np.any(np.abs(member_ca_reduced) > 0.0) or np.any(np.abs(member_cp_reduced) > 0.0):
-                    logger.warning(
-                        "QBladeOcean: POTFLOW=True, forcing member CaN and CpN to 0.0 to avoid double-counting added mass with radiation terms."
-                    )
-
-                member_ca_reduced[:] = 0.0
-                member_cp_reduced[:] = 0.0
-                member_cay_reduced[elem_is_rect] = 0.0
-                member_cpy_reduced[elem_is_rect] = 0.0
 
             # Separate dedup maps: circular members → HYDROMEMBERCOEFF (x-direction only)
             #                      rectangular members → HYDROMEMBERCOEFF_RECT (x + y direction)
@@ -1205,39 +1194,67 @@ class QBLADELoadCases(ExplicitComponent):
             floater_hydro_rect_caNy = np.empty(0)
             floater_hydro_rect_cpNy = np.empty(0)
 
-            circ_coeff_map = {}
-            rect_coeff_map = {}
-            hycoid = np.zeros(n_members, dtype=np.int_)
-            hycoid_rect = np.zeros(n_members, dtype=np.int_)
-            for i in range(n_members):
-                cd_i  = float(member_cd_reduced[i])
-                ca_i  = float(member_ca_reduced[i])
-                cp_i  = float(member_cp_reduced[i])
-                cdy_i = float(member_cdy_reduced[i])
-                cay_i = float(member_cay_reduced[i])
-                cpy_i = float(member_cpy_reduced[i])
-                if elem_is_rect[i]:
-                    key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8),
-                           round(cdy_i, 8), round(cay_i, 8), round(cpy_i, 8))
-                    if key not in rect_coeff_map:
-                        rect_coeff_map[key] = len(floater_hydro_rect_cdNx) + 1
-                        floater_hydro_rect_cdNx = np.append(floater_hydro_rect_cdNx, cd_i)
-                        floater_hydro_rect_caNx = np.append(floater_hydro_rect_caNx, ca_i)
-                        floater_hydro_rect_cpNx = np.append(floater_hydro_rect_cpNx, cp_i)
-                        floater_hydro_rect_cdNy = np.append(floater_hydro_rect_cdNy, cdy_i)
-                        floater_hydro_rect_caNy = np.append(floater_hydro_rect_caNy, cay_i)
-                        floater_hydro_rect_cpNy = np.append(floater_hydro_rect_cpNy, cpy_i)
-                    hycoid_rect[i] = rect_coeff_map[key]
-                    hycoid[i] = 0  # not used in HYDROMEMBERCOEFF for rect members
+            if modopt['flags']['floating']:
+                if member_cd_reduced.shape[0] != n_members:
+                    raise RuntimeError(
+                        f"QBladeOcean: member coefficient bookkeeping mismatch (n_members={n_members}, cd_entries={member_cd_reduced.shape[0]})."
+                    )
+
+                if qb_vt['QBladeOcean']['POTFLOW']:
+                    if np.any(np.abs(member_ca_reduced) > 0.0) or np.any(np.abs(member_cp_reduced) > 0.0):
+                        logger.warning(
+                            "QBladeOcean: POTFLOW=True, forcing member CaN and CpN to 0.0 to avoid double-counting added mass with radiation terms."
+                        )
+
+                    member_ca_reduced[:] = 0.0
+                    member_cp_reduced[:] = 0.0
+                    member_cay_reduced[elem_is_rect] = 0.0
+                    member_cpy_reduced[elem_is_rect] = 0.0
+
+                circ_coeff_map = {}
+                rect_coeff_map = {}
+                hycoid = np.zeros(n_members, dtype=np.int_)
+                hycoid_rect = np.zeros(n_members, dtype=np.int_)
+                for i in range(n_members):
+                    cd_i  = float(member_cd_reduced[i])
+                    ca_i  = float(member_ca_reduced[i])
+                    cp_i  = float(member_cp_reduced[i])
+                    cdy_i = float(member_cdy_reduced[i])
+                    cay_i = float(member_cay_reduced[i])
+                    cpy_i = float(member_cpy_reduced[i])
+                    if elem_is_rect[i]:
+                        key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8),
+                               round(cdy_i, 8), round(cay_i, 8), round(cpy_i, 8))
+                        if key not in rect_coeff_map:
+                            rect_coeff_map[key] = len(floater_hydro_rect_cdNx) + 1
+                            floater_hydro_rect_cdNx = np.append(floater_hydro_rect_cdNx, cd_i)
+                            floater_hydro_rect_caNx = np.append(floater_hydro_rect_caNx, ca_i)
+                            floater_hydro_rect_cpNx = np.append(floater_hydro_rect_cpNx, cp_i)
+                            floater_hydro_rect_cdNy = np.append(floater_hydro_rect_cdNy, cdy_i)
+                            floater_hydro_rect_caNy = np.append(floater_hydro_rect_caNy, cay_i)
+                            floater_hydro_rect_cpNy = np.append(floater_hydro_rect_cpNy, cpy_i)
+                        hycoid_rect[i] = rect_coeff_map[key]
+                        hycoid[i] = 0  # not used in HYDROMEMBERCOEFF for rect members
+                    else:
+                        key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8))
+                        if key not in circ_coeff_map:
+                            circ_coeff_map[key] = len(floater_hydro_cdN) + 1
+                            floater_hydro_cdN = np.append(floater_hydro_cdN, cd_i)
+                            floater_hydro_caN = np.append(floater_hydro_caN, ca_i)
+                            floater_hydro_cpN = np.append(floater_hydro_cpN, cp_i)
+                        hycoid[i] = circ_coeff_map[key]
+                        hycoid_rect[i] = 0  # not used in HYDROMEMBERCOEFF_RECT for circ members
+            else:
+                elem_is_rect = np.zeros(n_members, dtype=bool)
+                hycoid_rect = np.zeros(n_members, dtype=np.int_)
+                if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                    floater_hydro_cdN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCdN'], dtype=float))
+                    floater_hydro_caN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCaN'], dtype=float))
+                    floater_hydro_cpN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCpN'], dtype=float))
+                    nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
+                    hycoid = np.ones(n_members, dtype=np.int_)
                 else:
-                    key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8))
-                    if key not in circ_coeff_map:
-                        circ_coeff_map[key] = len(floater_hydro_cdN) + 1
-                        floater_hydro_cdN = np.append(floater_hydro_cdN, cd_i)
-                        floater_hydro_caN = np.append(floater_hydro_caN, ca_i)
-                        floater_hydro_cpN = np.append(floater_hydro_cpN, cp_i)
-                    hycoid[i] = circ_coeff_map[key]
-                    hycoid_rect[i] = 0  # not used in HYDROMEMBERCOEFF_RECT for circ members
+                    hycoid = np.zeros(n_members, dtype=np.int_)
             qb_vt['QBladeOcean']['HyCoID'] = hycoid
             qb_vt['QBladeOcean']['HyCoID_rect'] = hycoid_rect
             nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
