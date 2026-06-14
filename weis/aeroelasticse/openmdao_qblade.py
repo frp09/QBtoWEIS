@@ -1257,7 +1257,8 @@ class QBLADELoadCases(ExplicitComponent):
                     hycoid = np.zeros(n_members, dtype=np.int_)
             qb_vt['QBladeOcean']['HyCoID'] = hycoid
             qb_vt['QBladeOcean']['HyCoID_rect'] = hycoid_rect
-            nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
+            if modopt['flags']['floating']:
+                nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
             # SUBMEMBERS HyCoID offset is deferred until after mooring coefficients are
             # concatenated (ncoefficients). Store raw hycoid_rect (1-based within rect table)
             # for now; the final shift is applied after the Hydrodynamic Coefficients block.
