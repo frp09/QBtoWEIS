@@ -47,6 +47,7 @@ openfast_input_map = {
     'wave_height': ("SeaState","WaveHs"),
     'wave_period': ("SeaState","WaveTp"),
     'wave_direction': ("SeaState","WaveDir"),
+    'wave_heading': ("SeaState","WaveDir"),
     'wave_gamma': ("SeaState","WavePkShp"),
     'wave_seed': ("SeaState","WaveSeed1"),
 
@@ -121,6 +122,7 @@ qblade_input_map = {
     'wave_height': ("QBladeOcean","SIGHEIGHT"),
     'wave_period': ("QBladeOcean","PEAKPERIOD"),
     'WaveHd': ("QBladeOcean","DIRMEAN"),
+    'wave_heading': ("QBladeOcean","DIRMEAN"),
     'WaveGamma': ("QBladeOcean","GAMMA"), # check this
     'wave_seed': ("QBladeOcean","RANDSEED"),
 
@@ -390,6 +392,32 @@ class DLCGenerator(object):
         wave_gamma = self.get_wave_gamma(options)
         wave_heading = self.get_wave_heading(options)
         probabilities = self.get_probabilities(options)
+        is_custom = options.get('label') == 'Custom' or options.get('DLC') == 'Custom'
+
+        if is_custom:
+            n_rows = len(wind_speeds_indiv)
+            if len(probabilities) != n_rows:
+                raise Exception("Custom DLC probabilities must have the same length as the lookup-table wind speeds")
+            prob_sum = sum(probabilities)
+            if prob_sum <= 0.0:
+                raise Exception("Custom DLC probabilities must have a positive sum")
+            if abs(prob_sum - 1.) > 1.e-3:
+                logger.warning(f"WARNING: Custom DLC probabilities sum to {prob_sum:.6f}, not 1.0. Fatigue weighting will use the provided partial probability mass.")
+            if len(wind_speed) % n_rows != 0:
+                raise Exception("Custom DLC wind speeds could not be expanded evenly across seeds")
+
+            n_repeat = int(len(wind_speed) / n_rows)
+            probabilities = np.repeat(probabilities / n_repeat, n_repeat)
+            if len(wind_heading) == n_rows:
+                wind_heading = np.repeat(wind_heading, n_repeat)
+            if len(wave_height) == n_rows:
+                wave_height = np.repeat(wave_height, n_repeat)
+            if len(wave_period) == n_rows:
+                wave_period = np.repeat(wave_period, n_repeat)
+            if len(wave_gamma) == n_rows:
+                wave_gamma = np.repeat(wave_gamma, n_repeat)
+            if len(wave_heading) == n_rows:
+                wave_heading = np.repeat(wave_heading, n_repeat)
 
         if len(wind_seed) > 1 and len(wind_seed) != len(wind_speed):
             raise Exception("The vector of wind_seed must have either length=1 or the same length of wind speeds")
@@ -407,8 +435,12 @@ class DLCGenerator(object):
             raise Exception("The vector of wave heading must have either length=1 or the same length of wind speeds")
         if len(probabilities) > 1 and len(probabilities) != len(wind_speed):
             raise Exception("The vector of probabilities must have either length=1 or the same length of wind speeds")
-        if abs(sum(probabilities) - 1.) > 1.e-3:
-            raise Exception("The vector of probabilities must sum to 1")
+        if len(probabilities) > 0 and not is_custom:
+            prob_sum = sum(probabilities)
+            if prob_sum <= 0.0:
+                raise Exception("The vector of probabilities must have a positive sum")
+            if abs(prob_sum - 1.) > 1.e-3:
+                logger.warning(f"WARNING: The vector of probabilities sums to {prob_sum:.6f}, not 1.0. Fatigue weighting will use the provided partial probability mass.")
         
         metocean_case_info = {}
         metocean_case_info['wind_speed'] = wind_speed
@@ -420,7 +452,8 @@ class DLCGenerator(object):
         # metocean_case_info['current_speeds'] = current_speeds
         metocean_case_info['wave_gamma'] = wave_gamma
         metocean_case_info['wave_heading'] = wave_heading
-        metocean_case_info['probabilities'] = probabilities       
+        metocean_case_info['probabilities'] = probabilities
+        metocean_case_info['probability'] = probabilities
         # metocean_case_info['current_std'] = self.mo_current_std       
         
         return metocean_case_info
@@ -511,8 +544,6 @@ class DLCGenerator(object):
             for key in case:
                 setattr(idlc,key,case[key])
 
-            #if dlc_options['label'] == '1.2':
-            #    idlc.probability = probabilities[i_WaH]
             self.cases.append(idlc)
 
             # AEP DLC: set constant turbulence intensity
@@ -526,7 +557,7 @@ class DLCGenerator(object):
         Will use met_options as an input and modify that dict
         sea_state can be normal, severe
         '''
-        allowed_sea_states = ['normal','severe','50-year','1-year']
+        allowed_sea_states = ['normal','severe','50-year','1-year','custom']
         if sea_state not in allowed_sea_states:
             raise Exception(f'Selected sea state of {sea_state} is not in allowed_sea_states: {allowed_sea_states}')
         
@@ -547,6 +578,8 @@ class DLCGenerator(object):
             wind_speed_table = [50.]
             wave_height_table = self.wave_height1
             wave_period_table = self.wave_period1
+        elif sea_state == 'custom':
+            return
 
 
         # If the user has not defined Hs (wave_height in modopts) and Tp (wave_period in modopts), apply the metocean conditions defined by the table
@@ -674,6 +707,8 @@ class DLCGenerator(object):
         case_inputs_openfast = {}
         for i_group, generic_case_group in enumerate(generic_case_inputs):
             for generic_input in generic_case_group:
+                if generic_input == 'probability':
+                    continue
                 
                 if generic_input not in self.openfast_input_map.keys():
                     raise Exception(f'The input {generic_input} does not map to an OpenFAST input key in openfast_input_map')
@@ -694,6 +729,8 @@ class DLCGenerator(object):
         case_inputs_qblade = {}
         for i_group, generic_case_group in enumerate(generic_case_inputs):
             for generic_input in generic_case_group:
+                if generic_input == 'probability':
+                    continue
 
                 if generic_input not in self.qblade_input_map.keys():
                     raise Exception(f'The input {generic_input} does not map to a QBlade input key in qblade_input_map')
@@ -1350,6 +1387,38 @@ class DLCGenerator(object):
         # This function does the rest and generates the individual cases for each DLC
         self.generate_cases(generic_case_inputs,dlc_options)
 
+    def generate_Custom(self, dlc_options):
+        # User-defined fatigue load cases from a joint metocean probability table
+
+        # Get default options
+        dlc_options.update(self.default_options)
+
+        # DLC Specific options:
+        dlc_options['label'] = 'Custom'
+        dlc_options['sea_state'] = 'custom'
+        dlc_options['IEC_WindType'] = 'NTM'
+        dlc_options['PSF'] = 1.
+
+        # Custom DLCs require explicit lookup-table sea states and probabilities
+        for key in ['wind_speed', 'wave_height', 'wave_period', 'wave_heading', 'probabilities']:
+            if len(dlc_options[key]) == 0:
+                raise Exception(f'Custom DLC requires {key} to be defined')
+
+        # Set yaw_misalign, else default
+        if 'yaw_misalign' in dlc_options:
+            dlc_options['yaw_misalign'] = dlc_options['yaw_misalign']
+        else: # default
+            dlc_options['yaw_misalign'] = [0]
+
+        # Keep the lookup-table columns coupled in the metocean group
+        generic_case_inputs = []
+        generic_case_inputs.append(['total_time','transient_time','wake_mod','wave_model'])
+        generic_case_inputs.append(['wind_speed','wave_height','wave_period','wave_heading',
+                                    'wind_seed','wave_seed','probability'])
+        generic_case_inputs.append(['yaw_misalign'])
+
+        self.generate_cases(generic_case_inputs,dlc_options)
+
     def generate_new_dlc(self,dlc_options):
         # Describe the new design load case
 
@@ -1472,5 +1541,3 @@ if __name__ == "__main__":
     for case_inputs in dlc_generator.openfast_case_inputs:
         case_list, case_name = CaseGen_General(case_inputs, FAST_runDirectory, FAST_InputFile)
         print('here')
-
-
