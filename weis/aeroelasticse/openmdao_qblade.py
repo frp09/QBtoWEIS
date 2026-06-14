@@ -1176,6 +1176,8 @@ class QBLADELoadCases(ExplicitComponent):
 
 
             if not modopt['flags']['floating']:
+                # Keep empty floating-member bookkeeping so shared downstream blocks
+                # can run for monopile and floating without extra branching.
                 n_member = 0
                 member_joint_start = {}
                 member_joint_end = {}
@@ -1249,6 +1251,8 @@ class QBLADELoadCases(ExplicitComponent):
                         hycoid[i] = circ_coeff_map[key]
                         hycoid_rect[i] = 0  # not used in HYDROMEMBERCOEFF_RECT for circ members
             else:
+                # Monopile path has no rectangular-member table; keep placeholders
+                # because later shared assignments expect these arrays to exist.
                 elem_is_rect = np.zeros(n_members, dtype=bool)
                 hycoid_rect = np.zeros(n_members, dtype=np.int_)
                 if qb_vt['QBladeOcean']['override_morison_coefficients']:
