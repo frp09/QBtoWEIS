@@ -74,18 +74,12 @@ QBlade:
         BEMSPEEDUP: 30
     QBladeOcean:
         override_morison_coefficients: True
-        HydroCdN:
-            __default__: [1.0, 1.0]
-        HydroCaN:
-            __default__: [1.0, 1.0]
-        HydroCpN:
-            __default__: [0.0, 0.0]
-        HydroCdA:
-            __default__: [1.6, 1.6]
-        HydroCaA:
-            __default__: [1.0, 1.0]
-        HydroCpA:
-            __default__: [0.0, 0.0]
+        HydroCdN: 1.0
+        HydroCaN: 1.0
+        HydroCpN: 0.0
+        HydroCdA: 1.6
+        HydroCaA: 1.0
+        HydroCpA: 0.0
         MCFC: 1
         IsBuoy: 1
 

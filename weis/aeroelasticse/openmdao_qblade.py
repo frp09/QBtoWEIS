@@ -1196,28 +1196,6 @@ class QBLADELoadCases(ExplicitComponent):
             floater_hydro_rect_caNy = np.empty(0)
             floater_hydro_rect_cpNy = np.empty(0)
 
-            # Normalize coefficient inputs so both legacy scalar/list forms and the
-            # refined per-member dictionary form can be consumed consistently.
-            def _coeff_pair(value, default=(0.0, 0.0)):
-                if value is None:
-                    return np.array(default, dtype=float)
-                arr = np.atleast_1d(np.array(value, dtype=float)).flatten()
-                if arr.size == 0:
-                    return np.array(default, dtype=float)
-                if arr.size == 1:
-                    return np.array([arr[0], arr[0]], dtype=float)
-                return np.array([arr[0], arr[-1]], dtype=float)
-
-            def _member_coeff_map(raw_values, names, default=(0.0, 0.0)):
-                if isinstance(raw_values, dict):
-                    default_values = raw_values.get("__default__", default)
-                    return {
-                        name: _coeff_pair(raw_values.get(name, default_values), default=default)
-                        for name in names
-                    }
-                coeff_pair = _coeff_pair(raw_values, default=default)
-                return {name: coeff_pair.copy() for name in names}
-
             if modopt['flags']['floating']:
                 if member_cd_reduced.shape[0] != n_members:
                     raise RuntimeError(
@@ -1274,26 +1252,12 @@ class QBLADELoadCases(ExplicitComponent):
                 elem_is_rect = np.zeros(n_members, dtype=bool)
                 hycoid_rect = np.zeros(n_members, dtype=np.int_)
                 if qb_vt['QBladeOcean']['override_morison_coefficients']:
-                    # Monopile path: accept per-member dictionaries (preferred) while
-                    # keeping legacy scalar/list inputs as a global fallback.
-                    member_cd_map = _member_coeff_map(qb_vt['QBladeOcean'].get('HydroCdN', {}), members_name, default=(0.0, 0.0))
-                    member_ca_map = _member_coeff_map(qb_vt['QBladeOcean'].get('HydroCaN', {}), members_name, default=(0.0, 0.0))
-                    member_cp_map = _member_coeff_map(qb_vt['QBladeOcean'].get('HydroCpN', {}), members_name, default=(0.0, 0.0))
-
-                    coeff_map = {}
-                    hycoid = np.zeros(n_members, dtype=np.int_)
-                    for i, mem_name in enumerate(members_name):
-                        cd_i = float(member_cd_map[mem_name][0])
-                        ca_i = float(member_ca_map[mem_name][0])
-                        cp_i = float(member_cp_map[mem_name][0])
-                        key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8))
-                        if key not in coeff_map:
-                            coeff_map[key] = len(floater_hydro_cdN) + 1
-                            floater_hydro_cdN = np.append(floater_hydro_cdN, cd_i)
-                            floater_hydro_caN = np.append(floater_hydro_caN, ca_i)
-                            floater_hydro_cpN = np.append(floater_hydro_cpN, cp_i)
-                        hycoid[i] = coeff_map[key]
+                    # Monopile path keeps the legacy/global Hydrodynamic coefficient form.
+                    floater_hydro_cdN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCdN'], dtype=float))
+                    floater_hydro_caN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCaN'], dtype=float))
+                    floater_hydro_cpN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCpN'], dtype=float))
                     nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
+                    hycoid = np.ones(n_members, dtype=np.int_)
                 else:
                     hycoid = np.zeros(n_members, dtype=np.int_)
             qb_vt['QBladeOcean']['HyCoID'] = hycoid
