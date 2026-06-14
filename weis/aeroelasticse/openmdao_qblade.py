@@ -235,8 +235,8 @@ class QBLADELoadCases(ExplicitComponent):
             self.add_discrete_input("platform_elem_memid", [0]*NELEM_MAX)
 
             if modopt['flags']["floating"]:
-                n_member = modopt["floating"]["members"]["n_members"]
-                for k in range(n_member):
+                n_floating_members = modopt["floating"]["members"]["n_members"]
+                for k in range(n_floating_members):
                     n_height_mem = modopt["floating"]["members"]["n_height"][k]
                     outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
                     self.add_input(f"member{k}:joint1", np.zeros(3), units="m")
@@ -1178,7 +1178,7 @@ class QBLADELoadCases(ExplicitComponent):
             if not modopt['flags']['floating']:
                 # Keep empty floating-member bookkeeping so shared downstream blocks
                 # can run for monopile and floating without extra branching.
-                n_member = 0
+                n_floating_members = 0
                 member_joint_start = {}
                 member_joint_end = {}
 
@@ -1334,7 +1334,7 @@ class QBLADELoadCases(ExplicitComponent):
             wt_fp_members = self.options['wt_init']["components"]["floating_platform"]["members"]
             # Name-based lookup avoids fragile ordering assumptions between wt_init and modopt
             wt_fp_member_by_name = {m.get("name", ""): m for m in wt_fp_members}
-            for k in range(n_member):
+            for k in range(n_floating_members):
                 if k not in member_joint_start:
                     continue
                 j1_0 = member_joint_start[k]  # 0-based index
