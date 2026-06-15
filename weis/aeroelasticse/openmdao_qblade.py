@@ -502,9 +502,92 @@ class QBLADELoadCases(ExplicitComponent):
 
             self.qb_inumber += 1
 
+    def _coerce_hydro_pair(self, raw_value, field_name, member_name):
+        if isinstance(raw_value, np.ndarray):
+            values = raw_value.flatten().tolist()
+        elif isinstance(raw_value, (list, tuple)):
+            values = list(raw_value)
+        else:
+            values = [raw_value]
+
+        if len(values) == 0:
+            raise ValueError(f"QBladeOcean: {field_name}[{member_name}] is empty. Expected scalar or list with one/two entries.")
+
+        try:
+            values = [float(v) for v in values]
+        except Exception as exc:
+            raise ValueError(
+                f"QBladeOcean: {field_name}[{member_name}] contains non-numeric entries: {values}"
+            ) from exc
+
+        if len(values) > 2:
+            logger.warning(
+                f"QBladeOcean: {field_name}[{member_name}] has {len(values)} values. Using the first two only."
+            )
+
+        if len(values) == 1:
+            return [values[0], values[0]]
+
+        return [values[0], values[1]]
+
+    def _normalize_qblade_ocean_hydro_coefficients(self, qb_vt, modopt):
+        qbo = qb_vt.get('QBladeOcean', {})
+        if not qbo.get('override_morison_coefficients', False):
+            return
+
+        is_floating = modopt['flags']['floating']
+        if is_floating:
+            member_names = list(modopt['floating']['members']['name'])
+        else:
+            member_names = ['monopile']
+
+        required_fields = ('HydroCdN', 'HydroCaN')
+        optional_fields = ('HydroCpN', 'HydroCdNy', 'HydroCaNy', 'HydroCpNy', 'HydroCdA', 'HydroCaA', 'HydroCpA')
+
+        for field_name in required_fields + optional_fields:
+            raw_value = qbo.get(field_name, {})
+            normalized = {}
+
+            if isinstance(raw_value, dict):
+                field_map = dict(raw_value)
+                if not is_floating and 'monopile' not in field_map and len(field_map) == 1:
+                    legacy_key = next(iter(field_map.keys()))
+                    logger.warning(
+                        f"QBladeOcean: remapping {field_name} key '{legacy_key}' to 'monopile' for fixed-bottom cases."
+                    )
+                    field_map = {'monopile': field_map[legacy_key]}
+
+                missing = [name for name in member_names if name not in field_map]
+                if field_name in required_fields and missing:
+                    raise ValueError(
+                        f"QBladeOcean: missing {field_name} entries for members {missing}. "
+                        f"Expected keys: {member_names}"
+                    )
+
+                for name in member_names:
+                    if name in field_map:
+                        normalized[name] = self._coerce_hydro_pair(field_map[name], field_name, name)
+                    else:
+                        normalized[name] = [0.0, 0.0]
+            else:
+                logger.warning(
+                    f"QBladeOcean: legacy scalar/list format for {field_name} is deprecated. "
+                    "Please switch to {member_name: [start, end]}. Auto-converting for now."
+                )
+                legacy_pair = self._coerce_hydro_pair(raw_value, field_name, 'legacy')
+                for name in member_names:
+                    normalized[name] = legacy_pair.copy()
+
+            qbo[field_name] = normalized
+
+        qb_vt['QBladeOcean'] = qbo
+
     def update_QBLADE_model(self, qb_vt, inputs, discrete_inputs):
         modopt = self.options['modeling_options']
         precision = int(5) # Number of decimal places to round to
+
+        if modopt['flags']['offshore'] and qb_vt['QBladeOcean'].get('override_morison_coefficients', False):
+            self._normalize_qblade_ocean_hydro_coefficients(qb_vt, modopt)
 
         if modopt['flags']['offshore']:
             # qb_vt['QSim']['ISOFFSHORE'] = 0 # Use QBladeOcean if not set in modeling inputs TODO: should be 1 once testing is done
@@ -974,8 +1057,8 @@ class QBLADELoadCases(ExplicitComponent):
                     i_ca = np.atleast_1d(inputs[f"member{k}:Ca"])
 
                     if qb_vt['QBladeOcean']['override_morison_coefficients']:
-                        # Per-member entries are [start, end]; for HYDROMEMBERCOEFF we
-                        # use one reduced value per element family and take the first.
+                        # For now coefficients are treated as constant per member.
+                        # We consume the first value; this can be extended later via interpolation.
                         cd0 = float(qb_vt['QBladeOcean']['HydroCdN'][name][0])
                         ca0 = float(qb_vt['QBladeOcean']['HydroCaN'][name][0])
                         cp0 = float(qb_vt['QBladeOcean'].get('HydroCpN', {}).get(name, [0.0, 0.0])[0])
@@ -1256,10 +1339,14 @@ class QBLADELoadCases(ExplicitComponent):
                 elem_is_rect = np.zeros(n_members, dtype=bool)
                 hycoid_rect = np.zeros(n_members, dtype=np.int_)
                 if qb_vt['QBladeOcean']['override_morison_coefficients']:
-                    # Monopile path keeps the legacy/global Hydrodynamic coefficient form.
-                    floater_hydro_cdN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCdN'], dtype=float))
-                    floater_hydro_caN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCaN'], dtype=float))
-                    floater_hydro_cpN = np.atleast_1d(np.array(qb_vt['QBladeOcean']['HydroCpN'], dtype=float))
+                    # For fixed-bottom we currently keep one constant coefficient per member.
+                    # The member is monopile, so we use the first entry in the normalized pair.
+                    cd0 = float(qb_vt['QBladeOcean']['HydroCdN']['monopile'][0])
+                    ca0 = float(qb_vt['QBladeOcean']['HydroCaN']['monopile'][0])
+                    cp0 = float(qb_vt['QBladeOcean']['HydroCpN']['monopile'][0])
+                    floater_hydro_cdN = np.array([cd0], dtype=float)
+                    floater_hydro_caN = np.array([ca0], dtype=float)
+                    floater_hydro_cpN = np.array([cp0], dtype=float)
                     nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
                     hycoid = np.ones(n_members, dtype=np.int_)
                 else:
@@ -1331,9 +1418,11 @@ class QBLADELoadCases(ExplicitComponent):
             CaA_arr = np.zeros(n_joints)
             CpA_arr = np.zeros(n_joints)
             warned_potflow_joint_ca = False
-            wt_fp_members = self.options['wt_init']["components"]["floating_platform"]["members"]
-            # Name-based lookup avoids fragile ordering assumptions between wt_init and modopt
-            wt_fp_member_by_name = {m.get("name", ""): m for m in wt_fp_members}
+            wt_fp_member_by_name = {}
+            if n_floating_members > 0:
+                wt_fp_members = self.options['wt_init'].get("components", {}).get("floating_platform", {}).get("members", [])
+                # Name-based lookup avoids fragile ordering assumptions between wt_init and modopt
+                wt_fp_member_by_name = {m.get("name", ""): m for m in wt_fp_members}
             for k in range(n_floating_members):
                 if k not in member_joint_start:
                     continue
