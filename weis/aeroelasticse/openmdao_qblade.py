@@ -235,9 +235,7 @@ class QBLADELoadCases(ExplicitComponent):
             self.add_discrete_input("platform_elem_memid", [0]*NELEM_MAX)
 
             if modopt['flags']["floating"]:
-                print('************************ ENTERED LOOP **********************************')
                 n_floating_members = modopt["floating"]["members"]["n_members"]
-                print(n_floating_members)
                 for k in range(n_floating_members):
                     n_height_mem = modopt["floating"]["members"]["n_height"][k]
                     outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
