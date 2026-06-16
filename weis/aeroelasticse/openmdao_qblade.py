@@ -235,8 +235,8 @@ class QBLADELoadCases(ExplicitComponent):
             self.add_discrete_input("platform_elem_memid", [0]*NELEM_MAX)
 
             if modopt['flags']["floating"]:
-                n_member = modopt["floating"]["members"]["n_members"]
-                for k in range(n_member):
+                n_floating_members = modopt["floating"]["members"]["n_members"]
+                for k in range(n_floating_members):
                     n_height_mem = modopt["floating"]["members"]["n_height"][k]
                     outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
                     self.add_input(f"member{k}:joint1", np.zeros(3), units="m")
@@ -314,6 +314,7 @@ class QBLADELoadCases(ExplicitComponent):
             # environment inputs
             self.add_input('Hsig_wave',     val=0.0, units='m', desc='Significant wave height of incident waves')
             self.add_input('Tsig_wave',     val=0.0, units='s', desc='Peak-spectral period of incident waves')
+            self.add_input('beta_wave',    val=0.0, units='deg', desc='Incident wave propagation heading direction')   #TO DO: no connection in glue code. Look at OpnFAST implementation - connection commented there
 
             # Initial conditions
             self.add_input('U',             val=np.zeros(n_pc), units='m/s', desc='wind speeds')
@@ -502,9 +503,92 @@ class QBLADELoadCases(ExplicitComponent):
 
             self.qb_inumber += 1
 
+    def _coerce_hydro_pair(self, raw_value, field_name, member_name):
+        if isinstance(raw_value, np.ndarray):
+            values = raw_value.flatten().tolist()
+        elif isinstance(raw_value, (list, tuple)):
+            values = list(raw_value)
+        else:
+            values = [raw_value]
+
+        if len(values) == 0:
+            raise ValueError(f"QBladeOcean: {field_name}[{member_name}] is empty. Expected scalar or list with one/two entries.")
+
+        try:
+            values = [float(v) for v in values]
+        except Exception as exc:
+            raise ValueError(
+                f"QBladeOcean: {field_name}[{member_name}] contains non-numeric entries: {values}"
+            ) from exc
+
+        if len(values) > 2:
+            logger.warning(
+                f"QBladeOcean: {field_name}[{member_name}] has {len(values)} values. Using the first two only."
+            )
+
+        if len(values) == 1:
+            return [values[0], values[0]]
+
+        return [values[0], values[1]]
+
+    def _normalize_qblade_ocean_hydro_coefficients(self, qb_vt, modopt):
+        qbo = qb_vt.get('QBladeOcean', {})
+        if not qbo.get('override_morison_coefficients', False):
+            return
+
+        is_floating = modopt['flags']['floating']
+        if is_floating:
+            member_names = list(modopt['floating']['members']['name'])
+        else:
+            member_names = ['monopile']
+
+        required_fields = ('HydroCdN', 'HydroCaN')
+        optional_fields = ('HydroCpN', 'HydroCdNy', 'HydroCaNy', 'HydroCpNy', 'HydroCdA', 'HydroCaA', 'HydroCpA')
+
+        for field_name in required_fields + optional_fields:
+            raw_value = qbo.get(field_name, {})
+            normalized = {}
+
+            if isinstance(raw_value, dict):
+                field_map = dict(raw_value)
+                if not is_floating and 'monopile' not in field_map and len(field_map) == 1:
+                    legacy_key = next(iter(field_map.keys()))
+                    logger.warning(
+                        f"QBladeOcean: remapping {field_name} key '{legacy_key}' to 'monopile' for fixed-bottom cases."
+                    )
+                    field_map = {'monopile': field_map[legacy_key]}
+
+                missing = [name for name in member_names if name not in field_map]
+                if field_name in required_fields and missing:
+                    raise ValueError(
+                        f"QBladeOcean: missing {field_name} entries for members {missing}. "
+                        f"Expected keys: {member_names}"
+                    )
+
+                for name in member_names:
+                    if name in field_map:
+                        normalized[name] = self._coerce_hydro_pair(field_map[name], field_name, name)
+                    else:
+                        normalized[name] = [0.0, 0.0]
+            else:
+                logger.warning(
+                    f"QBladeOcean: legacy scalar/list format for {field_name} is deprecated. "
+                    "Please switch to {member_name: [start, end]}. Auto-converting for now."
+                )
+                legacy_pair = self._coerce_hydro_pair(raw_value, field_name, 'legacy')
+                for name in member_names:
+                    normalized[name] = legacy_pair.copy()
+
+            qbo[field_name] = normalized
+
+        qb_vt['QBladeOcean'] = qbo
+
     def update_QBLADE_model(self, qb_vt, inputs, discrete_inputs):
         modopt = self.options['modeling_options']
         precision = int(5) # Number of decimal places to round to
+
+        if modopt['flags']['offshore'] and qb_vt['QBladeOcean'].get('override_morison_coefficients', False):
+            self._normalize_qblade_ocean_hydro_coefficients(qb_vt, modopt)
 
         if modopt['flags']['offshore']:
             # qb_vt['QSim']['ISOFFSHORE'] = 0 # Use QBladeOcean if not set in modeling inputs TODO: should be 1 once testing is done
@@ -832,10 +916,12 @@ class QBLADELoadCases(ExplicitComponent):
             if not qb_vt['QBladeOcean']['override_wave']:
                 qb_vt['QBladeOcean']['SIGHEIGHT'] = float(inputs['Hsig_wave'])
                 qb_vt['QBladeOcean']['PEAKPERIOD'] = float(inputs['Tsig_wave'])
+                qb_vt['QBladeOcean']['DIRMEAN'] = float(inputs['beta_wave'])   #TO DO: this is a single "mean" value for multiple simulations? COde seems to only pass once through this function
             else:
                 if len(qb_vt['QSim']['MEANINF']) != len(qb_vt['QBladeOcean']['SIGHEIGHT']) != len(qb_vt['QBladeOcean']['PEAKPERIOD']):
                     qb_vt['QBladeOcean']['SIGHEIGHT'] = np.ones_like(qb_vt['QSim']['MEANINF']) * 5
                     qb_vt['QBladeOcean']['PEAKPERIOD'] = np.ones_like(qb_vt['QSim']['MEANINF']) * 1
+                    qb_vt['QBladeOcean']['DIRMEAN'] = np.zeros_like(qb_vt['QSim']['MEANINF'])
                     logger.warning("WARNING: inconsistent number of cases found len(SIGHEIGHT) != len(PEAKPERIOD) != len(MEANINF)! 'SIGHEIGHT' and 'PEAKPERIOD' are set to default values (5m and 10s)")
             
             if modopt['flags']['monopile']:
@@ -965,6 +1051,7 @@ class QBLADELoadCases(ExplicitComponent):
 
                 # Look over members and grab all nodes and internal connections
                 n_member = modopt["floating"]["members"]["n_members"]
+                n_floating_members = n_member
                 for k in range(n_member):
                     outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
                     name = modopt["floating"]["members"]["name"][k]
@@ -974,6 +1061,8 @@ class QBLADELoadCases(ExplicitComponent):
                     i_ca = np.atleast_1d(inputs[f"member{k}:Ca"])
 
                     if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                        # For now coefficients are treated as constant per member.
+                        # We consume the first value; this can be extended later via interpolation.
                         cd0 = float(qb_vt['QBladeOcean']['HydroCdN'][name][0])
                         ca0 = float(qb_vt['QBladeOcean']['HydroCaN'][name][0])
                         cp0 = float(qb_vt['QBladeOcean'].get('HydroCpN', {}).get(name, [0.0, 0.0])[0])
@@ -1173,28 +1262,19 @@ class QBLADELoadCases(ExplicitComponent):
                 qb_vt['QBladeOcean']['SubConstr_DoF_rZ'] = np.ones_like(subconstraint_TP)
 
 
+            if not modopt['flags']['floating']:
+                # Keep empty floating-member bookkeeping so shared downstream blocks
+                # can run for monopile and floating without extra branching.
+                n_floating_members = 0
+                member_joint_start = {}
+                member_joint_end = {}
+
             ## The following needs to be set for all offshore substructure files:
             # Hydro Coefficients floater    
             floater_hydro_cdN = np.empty(0)
             floater_hydro_caN = np.empty(0)
             floater_hydro_cpN = np.empty(0) 
             nfloater_hydro_coeffs = 0
-
-            if modopt['flags']['floating'] and member_cd_reduced.shape[0] != n_members:
-                raise RuntimeError(
-                    f"QBladeOcean: member coefficient bookkeeping mismatch (n_members={n_members}, cd_entries={member_cd_reduced.shape[0]})."
-                )
-
-            if qb_vt['QBladeOcean']['POTFLOW']:
-                if np.any(np.abs(member_ca_reduced) > 0.0) or np.any(np.abs(member_cp_reduced) > 0.0):
-                    logger.warning(
-                        "QBladeOcean: POTFLOW=True, forcing member CaN and CpN to 0.0 to avoid double-counting added mass with radiation terms."
-                    )
-
-                member_ca_reduced[:] = 0.0
-                member_cp_reduced[:] = 0.0
-                member_cay_reduced[elem_is_rect] = 0.0
-                member_cpy_reduced[elem_is_rect] = 0.0
 
             # Separate dedup maps: circular members → HYDROMEMBERCOEFF (x-direction only)
             #                      rectangular members → HYDROMEMBERCOEFF_RECT (x + y direction)
@@ -1205,42 +1285,80 @@ class QBLADELoadCases(ExplicitComponent):
             floater_hydro_rect_caNy = np.empty(0)
             floater_hydro_rect_cpNy = np.empty(0)
 
-            circ_coeff_map = {}
-            rect_coeff_map = {}
-            hycoid = np.zeros(n_members, dtype=np.int_)
-            hycoid_rect = np.zeros(n_members, dtype=np.int_)
-            for i in range(n_members):
-                cd_i  = float(member_cd_reduced[i])
-                ca_i  = float(member_ca_reduced[i])
-                cp_i  = float(member_cp_reduced[i])
-                cdy_i = float(member_cdy_reduced[i])
-                cay_i = float(member_cay_reduced[i])
-                cpy_i = float(member_cpy_reduced[i])
-                if elem_is_rect[i]:
-                    key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8),
-                           round(cdy_i, 8), round(cay_i, 8), round(cpy_i, 8))
-                    if key not in rect_coeff_map:
-                        rect_coeff_map[key] = len(floater_hydro_rect_cdNx) + 1
-                        floater_hydro_rect_cdNx = np.append(floater_hydro_rect_cdNx, cd_i)
-                        floater_hydro_rect_caNx = np.append(floater_hydro_rect_caNx, ca_i)
-                        floater_hydro_rect_cpNx = np.append(floater_hydro_rect_cpNx, cp_i)
-                        floater_hydro_rect_cdNy = np.append(floater_hydro_rect_cdNy, cdy_i)
-                        floater_hydro_rect_caNy = np.append(floater_hydro_rect_caNy, cay_i)
-                        floater_hydro_rect_cpNy = np.append(floater_hydro_rect_cpNy, cpy_i)
-                    hycoid_rect[i] = rect_coeff_map[key]
-                    hycoid[i] = 0  # not used in HYDROMEMBERCOEFF for rect members
+            if modopt['flags']['floating']:
+                if member_cd_reduced.shape[0] != n_members:
+                    raise RuntimeError(
+                        f"QBladeOcean: member coefficient bookkeeping mismatch (n_members={n_members}, cd_entries={member_cd_reduced.shape[0]})."
+                    )
+
+                if qb_vt['QBladeOcean']['POTFLOW']:
+                    if np.any(np.abs(member_ca_reduced) > 0.0) or np.any(np.abs(member_cp_reduced) > 0.0):
+                        logger.warning(
+                            "QBladeOcean: POTFLOW=True, forcing member CaN and CpN to 0.0 to avoid double-counting added mass with radiation terms."
+                        )
+
+                    member_ca_reduced[:] = 0.0
+                    member_cp_reduced[:] = 0.0
+                    member_cay_reduced[elem_is_rect] = 0.0
+                    member_cpy_reduced[elem_is_rect] = 0.0
+
+                circ_coeff_map = {}
+                rect_coeff_map = {}
+                hycoid = np.zeros(n_members, dtype=np.int_)
+                hycoid_rect = np.zeros(n_members, dtype=np.int_)
+                for i in range(n_members):
+                    cd_i  = float(member_cd_reduced[i])
+                    ca_i  = float(member_ca_reduced[i])
+                    cp_i  = float(member_cp_reduced[i])
+                    cdy_i = float(member_cdy_reduced[i])
+                    cay_i = float(member_cay_reduced[i])
+                    cpy_i = float(member_cpy_reduced[i])
+                    if elem_is_rect[i]:
+                        # Rectangular members keep an independent coefficient table.
+                        key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8),
+                               round(cdy_i, 8), round(cay_i, 8), round(cpy_i, 8))
+                        if key not in rect_coeff_map:
+                            rect_coeff_map[key] = len(floater_hydro_rect_cdNx) + 1
+                            floater_hydro_rect_cdNx = np.append(floater_hydro_rect_cdNx, cd_i)
+                            floater_hydro_rect_caNx = np.append(floater_hydro_rect_caNx, ca_i)
+                            floater_hydro_rect_cpNx = np.append(floater_hydro_rect_cpNx, cp_i)
+                            floater_hydro_rect_cdNy = np.append(floater_hydro_rect_cdNy, cdy_i)
+                            floater_hydro_rect_caNy = np.append(floater_hydro_rect_caNy, cay_i)
+                            floater_hydro_rect_cpNy = np.append(floater_hydro_rect_cpNy, cpy_i)
+                        hycoid_rect[i] = rect_coeff_map[key]
+                        hycoid[i] = 0  # not used in HYDROMEMBERCOEFF for rect members
+                    else:
+                        # Circular members use the standard HYDROMEMBERCOEFF table.
+                        key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8))
+                        if key not in circ_coeff_map:
+                            circ_coeff_map[key] = len(floater_hydro_cdN) + 1
+                            floater_hydro_cdN = np.append(floater_hydro_cdN, cd_i)
+                            floater_hydro_caN = np.append(floater_hydro_caN, ca_i)
+                            floater_hydro_cpN = np.append(floater_hydro_cpN, cp_i)
+                        hycoid[i] = circ_coeff_map[key]
+                        hycoid_rect[i] = 0  # not used in HYDROMEMBERCOEFF_RECT for circ members
+            else:
+                # Monopile path has no rectangular-member table; keep placeholders
+                # because later shared assignments expect these arrays to exist.
+                elem_is_rect = np.zeros(n_members, dtype=bool)
+                hycoid_rect = np.zeros(n_members, dtype=np.int_)
+                if qb_vt['QBladeOcean']['override_morison_coefficients']:
+                    # For fixed-bottom we currently keep one constant coefficient per member.
+                    # The member is monopile, so we use the first entry in the normalized pair.
+                    cd0 = float(qb_vt['QBladeOcean']['HydroCdN']['monopile'][0])
+                    ca0 = float(qb_vt['QBladeOcean']['HydroCaN']['monopile'][0])
+                    cp0 = float(qb_vt['QBladeOcean']['HydroCpN']['monopile'][0])
+                    floater_hydro_cdN = np.array([cd0], dtype=float)
+                    floater_hydro_caN = np.array([ca0], dtype=float)
+                    floater_hydro_cpN = np.array([cp0], dtype=float)
+                    nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
+                    hycoid = np.ones(n_members, dtype=np.int_)
                 else:
-                    key = (round(cd_i, 8), round(ca_i, 8), round(cp_i, 8))
-                    if key not in circ_coeff_map:
-                        circ_coeff_map[key] = len(floater_hydro_cdN) + 1
-                        floater_hydro_cdN = np.append(floater_hydro_cdN, cd_i)
-                        floater_hydro_caN = np.append(floater_hydro_caN, ca_i)
-                        floater_hydro_cpN = np.append(floater_hydro_cpN, cp_i)
-                    hycoid[i] = circ_coeff_map[key]
-                    hycoid_rect[i] = 0  # not used in HYDROMEMBERCOEFF_RECT for circ members
+                    hycoid = np.zeros(n_members, dtype=np.int_)
             qb_vt['QBladeOcean']['HyCoID'] = hycoid
             qb_vt['QBladeOcean']['HyCoID_rect'] = hycoid_rect
-            nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
+            if modopt['flags']['floating']:
+                nfloater_hydro_coeffs = floater_hydro_cdN.shape[0]
             # SUBMEMBERS HyCoID offset is deferred until after mooring coefficients are
             # concatenated (ncoefficients). Store raw hycoid_rect (1-based within rect table)
             # for now; the final shift is applied after the Hydrodynamic Coefficients block.
@@ -1304,10 +1422,12 @@ class QBLADELoadCases(ExplicitComponent):
             CaA_arr = np.zeros(n_joints)
             CpA_arr = np.zeros(n_joints)
             warned_potflow_joint_ca = False
-            wt_fp_members = self.options['wt_init']["components"]["floating_platform"]["members"]
-            # Name-based lookup avoids fragile ordering assumptions between wt_init and modopt
-            wt_fp_member_by_name = {m.get("name", ""): m for m in wt_fp_members}
-            for k in range(n_member):
+            wt_fp_member_by_name = {}
+            if n_floating_members > 0:
+                wt_fp_members = self.options['wt_init'].get("components", {}).get("floating_platform", {}).get("members", [])
+                # Name-based lookup avoids fragile ordering assumptions between wt_init and modopt
+                wt_fp_member_by_name = {m.get("name", ""): m for m in wt_fp_members}
+            for k in range(n_floating_members):
                 if k not in member_joint_start:
                     continue
                 j1_0 = member_joint_start[k]  # 0-based index
@@ -2029,6 +2149,7 @@ class QBLADELoadCases(ExplicitComponent):
             if qb_vt['QBladeOcean']['override_wave']:
                 i_qb_vt['QBladeOcean']['SIGHEIGHT']    = float(qb_vt['QBladeOcean']['SIGHEIGHT'][idx])
                 i_qb_vt['QBladeOcean']['PEAKPERIOD']   = float(qb_vt['QBladeOcean']['PEAKPERIOD'][idx])
+                i_qb_vt['QBladeOcean']['DIRMEAN']   = float(qb_vt['QBladeOcean']['DIRMEAN'][idx])
             
             if qb_vt['QSim']['WNDTYPE'] == 1:
                 i_qb_vt['QTurbSim']['RandSeed1'] = int(qb_vt['QTurbSim']['RandSeed1'][idx])
