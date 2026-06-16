@@ -235,7 +235,9 @@ class QBLADELoadCases(ExplicitComponent):
             self.add_discrete_input("platform_elem_memid", [0]*NELEM_MAX)
 
             if modopt['flags']["floating"]:
+                print('************************ ENTERED LOOP **********************************')
                 n_floating_members = modopt["floating"]["members"]["n_members"]
+                print(n_floating_members)
                 for k in range(n_floating_members):
                     n_height_mem = modopt["floating"]["members"]["n_height"][k]
                     outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
@@ -314,6 +316,7 @@ class QBLADELoadCases(ExplicitComponent):
             # environment inputs
             self.add_input('Hsig_wave',     val=0.0, units='m', desc='Significant wave height of incident waves')
             self.add_input('Tsig_wave',     val=0.0, units='s', desc='Peak-spectral period of incident waves')
+            self.add_input('beta_wave',    val=0.0, units='deg', desc='Incident wave propagation heading direction')   #TO DO: no connection in glue code. Look at OpnFAST implementation - connection commented there
 
             # Initial conditions
             self.add_input('U',             val=np.zeros(n_pc), units='m/s', desc='wind speeds')
@@ -915,10 +918,12 @@ class QBLADELoadCases(ExplicitComponent):
             if not qb_vt['QBladeOcean']['override_wave']:
                 qb_vt['QBladeOcean']['SIGHEIGHT'] = float(inputs['Hsig_wave'])
                 qb_vt['QBladeOcean']['PEAKPERIOD'] = float(inputs['Tsig_wave'])
+                qb_vt['QBladeOcean']['DIRMEAN'] = float(inputs['beta_wave'])   #TO DO: this is a single "mean" value for multiple simulations? COde seems to only pass once through this function
             else:
                 if len(qb_vt['QSim']['MEANINF']) != len(qb_vt['QBladeOcean']['SIGHEIGHT']) != len(qb_vt['QBladeOcean']['PEAKPERIOD']):
                     qb_vt['QBladeOcean']['SIGHEIGHT'] = np.ones_like(qb_vt['QSim']['MEANINF']) * 5
                     qb_vt['QBladeOcean']['PEAKPERIOD'] = np.ones_like(qb_vt['QSim']['MEANINF']) * 1
+                    qb_vt['QBladeOcean']['DIRMEAN'] = np.zeros_like(qb_vt['QSim']['MEANINF'])
                     logger.warning("WARNING: inconsistent number of cases found len(SIGHEIGHT) != len(PEAKPERIOD) != len(MEANINF)! 'SIGHEIGHT' and 'PEAKPERIOD' are set to default values (5m and 10s)")
             
             if modopt['flags']['monopile']:
@@ -1048,6 +1053,7 @@ class QBLADELoadCases(ExplicitComponent):
 
                 # Look over members and grab all nodes and internal connections
                 n_member = modopt["floating"]["members"]["n_members"]
+                n_floating_members = n_member
                 for k in range(n_member):
                     outer_shape_k = modopt["floating"]["members"]["outer_shape"][k]
                     name = modopt["floating"]["members"]["name"][k]
@@ -2145,6 +2151,7 @@ class QBLADELoadCases(ExplicitComponent):
             if qb_vt['QBladeOcean']['override_wave']:
                 i_qb_vt['QBladeOcean']['SIGHEIGHT']    = float(qb_vt['QBladeOcean']['SIGHEIGHT'][idx])
                 i_qb_vt['QBladeOcean']['PEAKPERIOD']   = float(qb_vt['QBladeOcean']['PEAKPERIOD'][idx])
+                i_qb_vt['QBladeOcean']['DIRMEAN']   = float(qb_vt['QBladeOcean']['DIRMEAN'][idx])
             
             if qb_vt['QSim']['WNDTYPE'] == 1:
                 i_qb_vt['QTurbSim']['RandSeed1'] = int(qb_vt['QTurbSim']['RandSeed1'][idx])
