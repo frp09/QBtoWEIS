@@ -2456,6 +2456,14 @@ class QBLADELoadCases(ExplicitComponent):
                     idx_pwrcrv.append(i_case)
                     U.append(dlc_generator.cases[i_case].URef)
 
+            if len(idx_pwrcrv) == 0 and DLC_label_for_AEP != 'Custom':
+                custom_ids = [i_case for i_case in range(dlc_generator.n_cases) if dlc_generator.cases[i_case].label == 'Custom']
+                if len(custom_ids) > 0:
+                    logger.warning('WARNING: No cases matched the selected AEP-like DLC label. Falling back to Custom DLC cases for AEP calculation.')
+                    DLC_label_for_AEP = 'Custom'
+                    idx_pwrcrv = custom_ids
+                    U = [dlc_generator.cases[i_case].URef for i_case in custom_ids]
+
             idx_pwrcrv = np.array(idx_pwrcrv, dtype=int)
             U = np.array(U)
 
@@ -2463,10 +2471,6 @@ class QBLADELoadCases(ExplicitComponent):
                 mask = ~np.isin(idx_pwrcrv, failed_sim_ids)
                 idx_pwrcrv = idx_pwrcrv[mask]
                 U = U[mask]
-
-                print("U:", U)
-                print("idx_pwrcrv:", idx_pwrcrv)
-                print("sum_stats.shape:", sum_stats.shape)
 
             stats_pwrcrv = sum_stats.iloc[idx_pwrcrv].copy()
         
@@ -2496,6 +2500,25 @@ class QBLADELoadCases(ExplicitComponent):
                 outputs['Omega_out'][idx_sim] = perf_data['RotSpeed']['mean'].iloc[idx_out]
                 outputs['pitch_out'][idx_sim] = perf_data['BldPitch1']['mean'].iloc[idx_out]
             outputs['AEP'] = AEP
+
+            if DLC_label_for_AEP == 'Custom':
+                case_prob = np.array([dlc_generator.cases[i_case].probability for i_case in idx_pwrcrv], dtype=float)
+                case_power = np.array(stats_pwrcrv['GenPwr']['mean'], dtype=float)
+                valid_mask = np.isfinite(case_prob) & np.isfinite(case_power) & (case_prob > 0.0)
+
+                if np.any(~valid_mask):
+                    logger.warning(f'WARNING: Ignoring {np.count_nonzero(~valid_mask)} Custom AEP cases with invalid probability or power statistics.')
+                    case_prob = case_prob[valid_mask]
+                    case_power = case_power[valid_mask]
+
+                active_prob_sum = np.sum(case_prob)
+                if len(case_prob) == 0 or active_prob_sum <= 0.0:
+                    logger.warning('WARNING: Valid Custom DLC probabilities were not available for AEP. Falling back to Weibull-based AEP weighting.')
+                else:
+                    if abs(active_prob_sum - 1.0) > 1.e-3:
+                        logger.warning(f'WARNING: Active Custom AEP probabilities sum to {active_prob_sum:.6f}. Only using the active probability mass for AEP calculation.')
+                    #case_prob /= active_prob_sum
+                    outputs['AEP'] = np.sum(case_power * case_prob) * 24.0 * 365.0
         else:
             # If DLC 1.1 was run
             if len(stats_pwrcrv['RtFldCp']['mean']) == 1: 
