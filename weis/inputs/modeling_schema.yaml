@@ -110,7 +110,7 @@ properties:
                         description: Flag to only generate a QBlade model and stop
                     path2qb_dll:
                         type: string
-                        default: /home/papi/software/QBladeCE_2.0.9/libQBladeCE_2.0.9.so.1.0.0
+                        default: C:\Users\FP\Documents\QBladeCE_2.0.9.5\QBladeCE_2.0.9.5.dll
                         description: Path to QBlade shared library (e.g. /home/user/QBlade/libqblade.so)
                     cl_devices:
                         type: array
