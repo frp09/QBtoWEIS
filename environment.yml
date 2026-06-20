@@ -20,6 +20,7 @@ dependencies:
   #- pyoptsparse
   - rosco==2.9.7
   - smt
+  - pydoe
   - wisdem==3.19.0
   - pip:
     - jenn
