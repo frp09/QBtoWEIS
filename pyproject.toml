@@ -55,7 +55,6 @@ dependencies = [
   "scipy",
   "smt",
   "wisdem",
-  "pydoe",
 ]
 
 # List additional groups of dependencies here (e.g. development

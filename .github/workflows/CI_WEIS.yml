@@ -59,6 +59,14 @@ jobs:
         run: |
           python -m pip install --no-deps -e . -v
 
+      # Apply modified ROSCO pitch saturation files
+      - name: Apply ROSCO pitch saturation modifications
+        run: |
+          ROSCO_PATH=$(python -c "import rosco; import os; print(os.path.dirname(rosco.__file__))")
+          echo "ROSCO installation path: $ROSCO_PATH"
+          cp -r ./rosco-pitchsaturation/toolbox/* "$ROSCO_PATH/toolbox/"
+          echo "Applied ROSCO pitch saturation modifications"
+
       # Debugging session
       #- name: Setup tmate session
       #  if: contains( matrix.os, 'windows')
