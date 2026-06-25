@@ -1137,3 +1137,81 @@ properties:
                 type: boolean
                 default: True
                 description: Save error timeseries?
+    TowerFatigue:
+        type: object
+        default: {}
+        description: Options for tower fatigue post-processing via TowerFatiguePostFrame. Only active when QBlade is used and flags.tower is True.
+        properties:
+            flag:
+                type: boolean
+                default: False
+                description: Enable tower fatigue post-processing. Requires QBlade.flag=True and flags.tower=True. Forces General.qblade_configuration.save_timeseries=True automatically.
+            n_theta:
+                type: integer
+                default: 36
+                minimum: 4
+                description: Number of circumferential points around the tower cross-section at which bending stress is evaluated for rainflow counting.
+            sn_model:
+                type: string
+                default: bilinear
+                enum: [linear, bilinear]
+                description: S-N curve model for tower fatigue. Use 'linear' for a single-slope model or 'bilinear' for a two-slope model (e.g. DNV-GL Class D).
+            section_fatigue_scf:
+                type: number
+                default: 1.0
+                minimum: 1.0
+                description: Stress concentration factor applied to the computed bending stress before rainflow counting.
+            fatigue_design_factor:
+                type: number
+                default: 1.0
+                minimum: 1.0
+                description: Partial safety factor on fatigue damage (DFF). Applied as a multiplier to the accumulated damage before comparing against the limit.
+            design_life_years:
+                type: number
+                default: 25.0
+                minimum: 1.0
+                unit: yr
+                description: Design lifetime in years. Converted internally to seconds for damage accumulation.
+            sn_k_full:
+                type: number
+                default: 0.2
+                minimum: 0.0
+                description: Thickness correction exponent k for the S-N curve (DNV-GL). Applied as (t/t_ref)^k scaling on the allowable stress.
+            sn_tref_full:
+                type: number
+                default: 0.025
+                minimum: 0.0
+                unit: m
+                description: Reference wall thickness for the S-N thickness correction (m).
+            sn_log_a_full:
+                type: number
+                default: 12.01
+                description: log10(a) intercept of the S-N curve for a single-slope (linear) model. Also used as the first-segment intercept when sn_model=bilinear.
+            sn_m_full:
+                type: number
+                default: 3.0
+                minimum: 1.0
+                description: Slope m of the S-N curve for a single-slope (linear) model. Also used as the first-segment slope when sn_model=bilinear.
+            sn_log_a1_full:
+                type: number
+                default: 12.01
+                description: log10(a) intercept for the first segment of a bilinear S-N curve. Ignored when sn_model=linear.
+            sn_m1_full:
+                type: number
+                default: 3.0
+                minimum: 1.0
+                description: Slope m1 for the first segment of a bilinear S-N curve (below sn_transition_cycles_full). Ignored when sn_model=linear.
+            sn_log_a2_full:
+                type: number
+                default: 15.35
+                description: log10(a) intercept for the second segment of a bilinear S-N curve. Ignored when sn_model=linear.
+            sn_m2_full:
+                type: number
+                default: 5.0
+                minimum: 1.0
+                description: Slope m2 for the second segment of a bilinear S-N curve (above sn_transition_cycles_full). Ignored when sn_model=linear.
+            sn_transition_cycles_full:
+                type: number
+                default: 1.0e7
+                minimum: 1.0
+                description: Number of cycles at the knee point separating the two segments of a bilinear S-N curve. Ignored when sn_model=linear.

@@ -518,6 +518,17 @@ properties:
                                 type: boolean
                                 default: False
                                 description: Use the logarithm of damage as the constraint.
+                    tower_fatigue:
+                        type: object
+                        description: Tower fatigue constraint based on Miner's rule accumulated damage from QBlade time-series. Requires TowerFatigue.flag=True and QBlade.flag=True in modeling options.
+                        default: {}
+                        properties:
+                            flag: *flag
+                            max:
+                                type: number
+                                default: 1.0
+                                minimum: 0.0
+                                description: Upper bound on tower_fatigue_post.constr_fatigue (normalized Miner's rule damage). Default is 1.0.
 
             openfast_failed:
                 type: object

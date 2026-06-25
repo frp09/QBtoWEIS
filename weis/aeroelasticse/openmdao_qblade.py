@@ -94,6 +94,7 @@ class QBLADELoadCases(ExplicitComponent):
         # responsible for toggling freeze_mode explicitly.
         self.freeze_mode = False     # set to True by the outer loop after each QBlade run
         self._frozen_outputs = {}    # populated at the end of the first successful QBlade run
+        self._frozen_tower_fatigue_metadata = None  # populated alongside _frozen_outputs when TowerFatigue.flag=True
         
         modopt = self.options['modeling_options']
         rotorse_options  = modopt['WISDEM']['RotorSE']
@@ -460,6 +461,12 @@ class QBLADELoadCases(ExplicitComponent):
 
         self.add_discrete_output('ts_out_dir', val={})
 
+        self.add_discrete_output('tower_fatigue_ts_dir',          val="")
+        self.add_discrete_output('tower_fatigue_case_names',      val=())
+        self.add_discrete_output('tower_fatigue_case_probability', val=())
+        self.add_discrete_output('tower_fatigue_case_files',      val=())
+        self.add_discrete_output('tower_fatigue_load_channels',   val=())
+
     def compute(self, inputs, outputs, discrete_inputs, discrete_outputs):
         print("############################################################")
         print(f"The WEIS-QBlade component with version number: {__version__} is called")
@@ -474,6 +481,15 @@ class QBLADELoadCases(ExplicitComponent):
             print("[QBLADELoadCases] freeze_loads is active — returning frozen loads, skipping QBlade")
             for name, val in self._frozen_outputs.items():
                 outputs[name] = val
+            if modopt_top.get("TowerFatigue", {}).get("flag", False):
+                if self._frozen_tower_fatigue_metadata is None:
+                    raise ValueError(
+                        "freeze_loads is active with TowerFatigue.flag=True, but no tower "
+                        "fatigue metadata snapshot exists. A fresh QBlade evaluation must "
+                        "complete before freeze_loads can be used with TowerFatigue."
+                    )
+                for k, v in self._frozen_tower_fatigue_metadata.items():
+                    discrete_outputs[k] = copy.deepcopy(v)
             return
 
         cache = self.options['cache']
@@ -2335,11 +2351,96 @@ class QBLADELoadCases(ExplicitComponent):
             if modopt['General']['qblade_configuration']['store_turbines']:
                 self.store_turbines()
 
+            # Populate tower fatigue discrete metadata.
+            # Guarded by TowerFatigue.flag AND save_timeseries — the .p files must
+            # already exist before this block records their paths.
+            if (modopt.get("TowerFatigue", {}).get("flag", False)
+                    and modopt['General']['qblade_configuration']['save_timeseries']):
+
+                ts_dir = os.path.join(
+                    self.QBLADE_runDirectory,
+                    'iteration_' + str(self.qb_inumber),
+                    'timeseries',
+                )
+
+                # Determine total case count (same logic as save_timeseries)
+                if self.qb_vt['QSim']['DLCGenerator']:
+                    _n_cases = dlc_generator.n_cases
+                elif self.qb_vt['QSim']['WNDTYPE'] == 1:
+                    _n_cases = len(self.qb_vt['QTurbSim']['URef'])
+                else:
+                    _n_cases = len(self.qb_vt['QSim']['MEANINF'])
+
+                _failed_set = set(failed_sim_ids or [])
+
+                # Case probabilities — Custom DLC path only; no Weibull fallback.
+                # Non-Custom or non-DLC cases receive probability 0.0 and are
+                # skipped by TowerFatiguePostFrame before any file I/O.
+                if dlc_generator is not None:
+                    _custom_prob = {
+                        i: float(c.probability)
+                        for i, c in enumerate(dlc_generator.cases)
+                        if c.label == 'Custom'
+                    }
+                else:
+                    _custom_prob = {}
+
+                _case_names = []
+                _case_prob  = []
+                _case_files = []
+
+                for _i in range(_n_cases):
+                    _case_names.append(self.QBLADE_namingOut + '_' + str(_i))
+                    if _i in _failed_set:
+                        # Failed: zero probability → TowerFatiguePostFrame skips
+                        _case_prob.append(0.0)
+                        _case_files.append("")
+                    else:
+                        _case_prob.append(_custom_prob.get(_i, 0.0))
+                        _case_files.append(self.QBLADE_namingOut + '_' + str(_i) + '.p')
+
+                if not (len(_case_names) == len(_case_prob) == len(_case_files)):
+                    raise RuntimeError(
+                        "Tower fatigue metadata length mismatch: "
+                        f"names={len(_case_names)}, prob={len(_case_prob)}, "
+                        f"files={len(_case_files)}."
+                    )
+                if any(not np.isfinite(_p) or _p < 0.0 for _p in _case_prob):
+                    raise ValueError(
+                        "Tower fatigue case probabilities must be finite and non-negative."
+                    )
+                if np.sum(_case_prob) <= 0.0:
+                    raise ValueError(
+                        "TowerFatigue is active, but the sum of tower fatigue case probabilities "
+                        "is zero. At least one non-failed QBlade case must have a positive Custom "
+                        "probability; otherwise fatigue_damage and constr_fatigue would be "
+                        "incorrectly returned as zero."
+                    )
+
+                discrete_outputs['tower_fatigue_ts_dir']          = ts_dir
+                discrete_outputs['tower_fatigue_case_names']      = tuple(_case_names)
+                discrete_outputs['tower_fatigue_case_probability'] = tuple(_case_prob)
+                discrete_outputs['tower_fatigue_case_files']      = tuple(_case_files)
+                discrete_outputs['tower_fatigue_load_channels']   = tuple(
+                    self._build_qblade_tower_fatigue_load_channels()
+                )
+
             # Fixed-load outer-loop: capture outputs so they can be returned frozen on
             # subsequent optimizer evaluations.  This runs unconditionally when
             # freeze_loads is True so that the snapshot is always current.
             if modopt['QBlade']['freeze_loads']:
                 self._frozen_outputs = {name: np.copy(outputs[name]) for name in outputs}
+                if modopt.get("TowerFatigue", {}).get("flag", False):
+                    _tf_keys = (
+                        "tower_fatigue_ts_dir",
+                        "tower_fatigue_case_names",
+                        "tower_fatigue_case_probability",
+                        "tower_fatigue_case_files",
+                        "tower_fatigue_load_channels",
+                    )
+                    self._frozen_tower_fatigue_metadata = {
+                        k: copy.deepcopy(discrete_outputs[k]) for k in _tf_keys
+                    }
                 freeze_save_dir = os.path.join(self.QBLADE_runDirectory,
                                                'iteration_' + str(self.qb_inumber))
                 os.makedirs(freeze_save_dir, exist_ok=True)
@@ -2993,6 +3094,124 @@ class QBLADELoadCases(ExplicitComponent):
 
         discrete_outputs['ts_out_dir'] = save_dir
 
+    # ------------------------------------------------------------------
+    # Tower fatigue metadata helpers
+    # These methods are called only when modeling_options["TowerFatigue"]["flag"]
+    # is True.  They have no side effects when not called.
+    # ------------------------------------------------------------------
+
+    def _get_qblade_tower_fatigue_stations(self):
+        """Return normalized intermediate tower stations from qb_vt.
+
+        Source: self.qb_vt["Main"]["TWR"] — the same array used by
+        output_channels() to request distributed tower load channels.
+        Stations must lie strictly inside the open interval (0, 1).
+        """
+        stations = np.asarray(self.qb_vt["Main"]["TWR"], dtype=float).ravel()
+
+        if not np.all(np.isfinite(stations)):
+            raise ValueError(
+                "Tower fatigue stations (qb_vt['Main']['TWR']) contain "
+                "non-finite values."
+            )
+        if stations.ndim != 1 or stations.size == 0:
+            raise ValueError(
+                "Tower fatigue stations must be a non-empty 1-D array."
+            )
+        if np.any(stations <= 0.0) or np.any(stations >= 1.0):
+            raise ValueError(
+                "Intermediate tower fatigue stations must lie strictly "
+                "inside the open interval (0, 1). Bottom (0.0) and top "
+                "(1.0) are added automatically."
+            )
+        if np.any(np.diff(stations) <= 0.0):
+            raise ValueError(
+                "Tower fatigue stations must be strictly increasing."
+            )
+        return stations
+
+    def _build_qblade_tower_fatigue_required_channels(self):
+        """Return the flat list of QBlade channel names needed for tower fatigue.
+
+        The names match exactly what QBlade stores in the timeseries dicts
+        (without units — QBlade strips units from column names in the
+        timeseries data structure).
+        """
+        stations = self._get_qblade_tower_fatigue_stations()
+
+        channels = []
+        # Bottom constraint node (normalized position 0.0)
+        channels.append("Z_tb For. TWR Bot. Constr.")
+        channels.append("X_tb Mom. TWR Bot. Constr.")
+        channels.append("Y_tb Mom. TWR Bot. Constr.")
+        # Intermediate stations
+        for s in stations:
+            channels.append(f"Z_l For. TWR pos {s:.3f}")
+            channels.append(f"X_l Mom. TWR pos {s:.3f}")
+            channels.append(f"Y_l Mom. TWR pos {s:.3f}")
+        # Top constraint node (normalized position 1.0)
+        channels.append("Z_tt For. TWR Top Constr.")
+        channels.append("X_tt Mom. TWR Top Constr.")
+        channels.append("Y_tt Mom. TWR Top Constr.")
+        return channels
+
+    def _build_qblade_tower_fatigue_load_channels(self):
+        """Return the tower_fatigue_load_channels list for TowerFatiguePostFrame.
+
+        Each entry maps one normalized tower position to the three exact QBlade
+        channel names (Fz, Mx, My) present in the saved .p timeseries files.
+
+        Positions: [0.0] + intermediate stations + [1.0].
+
+        Unit note
+        ---------
+        QBlade_wrapper.scale_channels() converts all force channels from N to kN
+        and all moment channels from Nm to kNm before the timeseries are stored in
+        the .p files.  ``scale_to_si`` carries the factor that TowerFatiguePostFrame
+        must multiply raw .p values by to obtain SI loads (N and N*m):
+
+            kN  * 1e3 = N
+            kNm * 1e3 = N*m
+
+        A future OpenFAST metadata builder should set scale_to_si to 1.0 if its
+        .p files already contain loads in N and N*m.
+        """
+        stations = self._get_qblade_tower_fatigue_stations()
+        positions = [0.0] + list(stations) + [1.0]
+
+        fz_names = (
+            ["Z_tb For. TWR Bot. Constr."]
+            + [f"Z_l For. TWR pos {s:.3f}" for s in stations]
+            + ["Z_tt For. TWR Top Constr."]
+        )
+        mx_names = (
+            ["X_tb Mom. TWR Bot. Constr."]
+            + [f"X_l Mom. TWR pos {s:.3f}" for s in stations]
+            + ["X_tt Mom. TWR Top Constr."]
+        )
+        my_names = (
+            ["Y_tb Mom. TWR Bot. Constr."]
+            + [f"Y_l Mom. TWR pos {s:.3f}" for s in stations]
+            + ["Y_tt Mom. TWR Top Constr."]
+        )
+
+        # QBlade stores forces in kN and moments in kNm.
+        # TowerFatiguePostFrame requires SI: N and N*m.
+        _scale_to_si = {"Fz": 1.0e3, "Mx": 1.0e3, "My": 1.0e3}
+        _units = {"Fz": "kN", "Mx": "kNm", "My": "kNm"}
+
+        load_channels = []
+        for pos, fz, mx, my in zip(positions, fz_names, mx_names, my_names):
+            load_channels.append({
+                "twr_sec_pos": float(pos),
+                "keys": {"Fz": fz, "Mx": mx, "My": my},
+                "scale_to_si": dict(_scale_to_si),
+                "units": dict(_units),
+            })
+        return load_channels
+
+    # ------------------------------------------------------------------
+
     def save_timeseries(self,chan_time, dlc_generator, failed_sim_ids):
 
         # Make iteration directory
@@ -3019,6 +3238,14 @@ class QBLADELoadCases(ExplicitComponent):
             # Check if the channel is a time channel
             if "Time" not in channels_no_unit:
                 channels_no_unit.insert(0, "Time")
+
+        # When a user filter is active and TowerFatigue analysis is enabled,
+        # protect the required fatigue load channels from being filtered out.
+        # When no filter is active the full timeseries is saved anyway — no action needed.
+        if channels_no_unit and self.options["modeling_options"].get("TowerFatigue", {}).get("flag", False):
+            for _ch in self._build_qblade_tower_fatigue_required_channels():
+                if _ch not in channels_no_unit:
+                    channels_no_unit.append(_ch)
 
         if self.qb_vt['QSim']['DLCGenerator']:
             n_cases = dlc_generator.n_cases
