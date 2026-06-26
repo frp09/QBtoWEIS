@@ -3105,30 +3105,55 @@ class QBLADELoadCases(ExplicitComponent):
 
         Source: self.qb_vt["Main"]["TWR"] — the same array used by
         output_channels() to request distributed tower load channels.
-        Stations must lie strictly inside the open interval (0, 1).
+
+        Accepts the full normalized tower grid including endpoints 0.0 and
+        1.0, which is the established convention in this repository.  Endpoints
+        are stripped internally: bottom (0.0) and top (1.0) are handled by the
+        downstream channel builders using the same Bot.Constr / Top Constr
+        channels as the existing non-fatigue tower-loading workflow.
         """
         stations = np.asarray(self.qb_vt["Main"]["TWR"], dtype=float).ravel()
+
+        if stations.size == 0:
+            raise ValueError(
+                "Tower fatigue stations (qb_vt['Main']['TWR']) must be a "
+                "non-empty array."
+            )
 
         if not np.all(np.isfinite(stations)):
             raise ValueError(
                 "Tower fatigue stations (qb_vt['Main']['TWR']) contain "
                 "non-finite values."
             )
-        if stations.ndim != 1 or stations.size == 0:
+
+        tol = 1.0e-9
+
+        out_of_range = (stations < -tol) | (stations > 1.0 + tol)
+        if np.any(out_of_range):
             raise ValueError(
-                "Tower fatigue stations must be a non-empty 1-D array."
+                "Tower fatigue stations (qb_vt['Main']['TWR']) must lie in "
+                "the closed interval [0, 1]. Values 0.0 and 1.0 are allowed "
+                "and are handled using QBlade bottom/top constraint channels. "
+                f"Out-of-range values: {stations[out_of_range].tolist()}"
             )
-        if np.any(stations <= 0.0) or np.any(stations >= 1.0):
+
+        stations = np.clip(stations, 0.0, 1.0)
+        stations = np.unique(stations)
+
+        # Keep only intermediate stations. Bottom and top are added separately
+        # by the TowerFatigue channel builders using the same Bot.Constr /
+        # Top Constr convention as the existing QBlade tower-loading workflow.
+        internal = stations[(stations > tol) & (stations < 1.0 - tol)]
+
+        if internal.size == 0:
             raise ValueError(
-                "Intermediate tower fatigue stations must lie strictly "
-                "inside the open interval (0, 1). Bottom (0.0) and top "
-                "(1.0) are added automatically."
+                "TowerFatigue requires at least one intermediate tower station "
+                "strictly between 0.0 and 1.0 in qb_vt['Main']['TWR']. "
+                "Endpoints 0.0 and 1.0 are valid but are handled separately "
+                "through QBlade bottom/top constraint channels."
             )
-        if np.any(np.diff(stations) <= 0.0):
-            raise ValueError(
-                "Tower fatigue stations must be strictly increasing."
-            )
-        return stations
+
+        return internal
 
     def _build_qblade_tower_fatigue_required_channels(self):
         """Return the flat list of QBlade channel names needed for tower fatigue.
