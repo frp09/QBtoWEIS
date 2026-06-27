@@ -66,7 +66,7 @@ dependencies = [
 # Similar to `dependencies` above, these must be valid existing
 # projects.
 [project.optional-dependencies] # Optional
-test = ["coveralls", "pytest", "pytest-cov"]
+test = ["coveralls", "pytest", "pytest-cov", "pydoe"]
 opt = ["pyoptsparse"]
 docs = ["sphinx",
 	"sphinxcontrib-bibtex",

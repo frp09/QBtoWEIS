@@ -19,7 +19,8 @@ dependencies:
   - pyhams==1.3.0
   #- pyoptsparse
   - rosco==2.9.7
-  - smt
+  - smt==2.13.0
+  - pydoe
   - wisdem==3.19.0
   - pip:
     - jenn
