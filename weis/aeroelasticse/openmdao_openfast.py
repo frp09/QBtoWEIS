@@ -73,7 +73,7 @@ class FASTLoadCases(ExplicitComponent):
         self.add_input('V_cutout',    val=0.0, units='m/s',      desc='Maximum wind speed where turbine operates (cut-out)')
         self.add_input('Vrated',      val=0.0, units='m/s',      desc='rated wind speed')
         self.add_input('hub_height',                val=0.0, units='m', desc='hub height')
-        self.add_discrete_input('turbulence_class', val='A', desc='IEC turbulence class')
+        self.add_discrete_input('turbulence_class', val='B', desc='IEC turbulence class')
         self.add_discrete_input('turbine_class',    val='I', desc='IEC turbine class')
         self.add_input('Rtip',              val=0.0, units='m', desc='dimensional radius of tip')
         self.add_input('shearExp',    val=0.0,                   desc='shear exponent')
