@@ -56,8 +56,17 @@ recorder:
     flag: True              # Flag to activate OpenMDAO recorder
     file_name: log_iea22mw_umaine.sql  # Name of OpenMDAO recorder
     includes: [
-    'floatingse.platform_mass', 
-    'tower_fatigue_post.tower_fatigue_damage_25y',
-    'tower_fatigue_post.tower_fatigue_constr',
-    'tower_fatigue_post.tower_fatigue_damage_25y_theta',
+    'floatingse.platform_mass',
+    'towerse.tower_mass',
+    'towerse_post.constr_stress',
+    'towerse_post.constr_global_buckling',
+    'towerse_post.constr_shell_buckling',
+    'tower_fatigue_post.fatigue_damage',
+    'tower_fatigue_post.constr_fatigue',
+    'aeroelastic_qblade.tower_maxMy_Fx',
+    'aeroelastic_qblade.tower_maxMy_Fy',
+    'aeroelastic_qblade.tower_maxMy_Fz',
+    'aeroelastic_qblade.tower_maxMy_Mx',
+    'aeroelastic_qblade.tower_maxMy_My',
+    'aeroelastic_qblade.tower_maxMy_Mz',
     ]

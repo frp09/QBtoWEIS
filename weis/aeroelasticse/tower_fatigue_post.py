@@ -73,7 +73,7 @@ from each time-series file.
 
 ``scale_to_si`` converts each raw load channel from its file-stored unit to SI
 (N for forces, N*m for moments).  This field is required.  If it is absent the
-parser falls back to 1.0 for all channels and emits a warning.
+parser raises an error instead of guessing units.
 
 Unit contract
 -------------
@@ -94,10 +94,20 @@ The probabilities are assumed to be already prepared and validated upstream.
 This component does not normalize them, does not redistribute them, and does
 not apply a Weibull fallback. If a simulation failed, the upstream metadata
 builder is responsible for setting the corresponding probability to zero.
+
+Fatigue-model assumptions
+-------------------------
+The component reconstructs longitudinal normal stress from axial force and
+biaxial bending only. It does not apply a mean-stress correction, does not trim
+transients from the saved time series, and does not impose an endurance cutoff.
+Rainflow ranges are extracted directly from each reconstructed stress time
+series using the high-level fatpack interface used by pCrunch. Case probability
+mass is used exactly as supplied by the upstream metadata.
 """
 
 from pathlib import Path
 
+import fatpack
 import numpy as np
 import pandas as pd
 import openmdao.api as om
@@ -172,6 +182,15 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
             default="bilinear",
             values=("linear", "bilinear"),
             desc="S-N curve model to be used for fatigue damage evaluation.",
+        )
+        self.options.declare(
+            "rainflow_load_classes",
+            default=256,
+            types=int,
+            desc=(
+                "Number of load classes used by fatpack.find_rainflow_ranges. "
+                "Default 256 to match the pCrunch/NREL rainflow-counting interface."
+            ),
         )
 
     def setup(self):
@@ -269,24 +288,16 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
         # initial choice.
         self.declare_partials("*", "*", method="fd")
 
-    def _resolve_time_series_path(self, ts_dir, case_file):
-        """
-        Resolve the path of one saved time-series file.
-        """
-        case_path = Path(case_file)
-
-        if not case_path.is_absolute():
-            case_path = Path(ts_dir) / case_path
-
-        return case_path
-
     def _load_time_series_data(self, ts_dir, case_file):
         """
         Load one saved time-series file.
 
         Supported file formats are .p, .pkl, .pickle, .csv, and .npz.
         """
-        case_path = self._resolve_time_series_path(ts_dir, case_file)
+        case_path = Path(case_file)
+
+        if not case_path.is_absolute():
+            case_path = Path(ts_dir) / case_path
 
         if not case_path.exists():
             raise FileNotFoundError(f"Time-series file not found: {case_path}")
@@ -361,36 +372,6 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
 
         return values
 
-    def load_time_series_key(self, ts_dir, case_file, key):
-        """
-        Load one channel from one saved time-series file.
-
-        This helper reads a single time-series file and extracts the requested
-        key as a one-dimensional numpy array. It is intended for debugging or
-        for small single-channel operations. The case-level fatigue workflow
-        uses ``_load_time_series_data`` to avoid reloading the same file many
-        times.
-
-        Parameters
-        ----------
-        ts_dir : str or pathlib.Path
-            Directory containing the saved time-series files.
-
-        case_file : str or pathlib.Path
-            File name or full path of the selected time-series file. If this is
-            a relative path, it is resolved relative to ``ts_dir``.
-
-        key : str
-            Name of the time-series channel to extract.
-
-        Returns
-        -------
-        values : numpy.ndarray[n_time]
-            Requested time-series channel as a one-dimensional numpy array.
-        """
-        data, case_path = self._load_time_series_data(ts_dir, case_file)
-        return self._extract_time_series_key(data, case_path, key)
-
     def _load_time_series_key_from_candidates(self, data, case_path, keys):
         """
         Load the first available key from a list of candidate key names.
@@ -444,8 +425,9 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
             components.  A future OpenFAST builder should use ``scale_to_si = 1.0``
             if .p files already contain N / N*m.
 
-            If ``scale_to_si`` is absent, all factors default to 1.0 and a
-            RuntimeWarning is emitted.
+            If ``scale_to_si`` is absent, the parser raises an error. Explicit
+            unit conversion factors are required to avoid silently mixing kN/kNm
+            and SI loads.
 
         Returns
         -------
@@ -1000,36 +982,15 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
 
         return sigma
 
-    def _turning_points(self, values):
-        """
-        Extract turning points from a one-dimensional signal.
-        """
-        values = np.asarray(values, dtype=float).squeeze()
-
-        if values.ndim != 1:
-            raise ValueError("Rainflow input must be one-dimensional.")
-
-        if values.size < 2:
-            return values
-
-        keep = np.ones(values.size, dtype=bool)
-        keep[1:] = np.diff(values) != 0.0
-        values = values[keep]
-
-        if values.size < 3:
-            return values
-
-        slope = np.diff(values)
-        turning_mask = np.zeros(values.size, dtype=bool)
-        turning_mask[0] = True
-        turning_mask[-1] = True
-        turning_mask[1:-1] = slope[:-1] * slope[1:] < 0.0
-
-        return values[turning_mask]
-
     def _rainflow_ranges_counts(self, stress):
         """
-        Count rainflow stress ranges.
+        Count rainflow stress ranges using fatpack, following the same
+        high-level rainflow interface used by NREL pCrunch.
+
+        pCrunch calls ``fatpack.find_rainflow_ranges`` directly on the channel
+        time series. Here the same approach is used on the reconstructed stress
+        time series. The returned ranges are passed to the existing S-N / Miner
+        damage calculation without changing the downstream fatigue physics.
 
         Returns
         -------
@@ -1037,53 +998,46 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
             Rainflow stress ranges.
 
         counts : numpy array, [-]
-            Cycle counts. Closed cycles have count 1.0 and residual half
-            cycles have count 0.5.
+            Cycle counts associated with each returned range.
         """
-        turning_points = self._turning_points(stress)
+        stress = np.asarray(stress, dtype=float).squeeze()
 
-        if turning_points.size < 2:
+        if stress.ndim != 1:
+            raise ValueError("Rainflow input stress must be one-dimensional.")
+
+        if stress.size < 2:
             return np.zeros(0), np.zeros(0)
 
-        stack = []
-        ranges = []
-        counts = []
+        if np.any(~np.isfinite(stress)):
+            raise ValueError("Rainflow input stress contains non-finite values.")
 
-        for point in turning_points:
-            stack.append(float(point))
+        rainflow_load_classes = self.options["rainflow_load_classes"]
 
-            while len(stack) >= 3:
-                x_range = abs(stack[-1] - stack[-2])
-                y_range = abs(stack[-2] - stack[-3])
+        if rainflow_load_classes <= 0:
+            raise ValueError("rainflow_load_classes must be positive.")
 
-                if x_range < y_range:
-                    break
+        try:
+            ranges = fatpack.find_rainflow_ranges(
+                stress,
+                k=rainflow_load_classes,
+            )
+        except ValueError:
+            return np.zeros(0), np.zeros(0)
 
-                if len(stack) == 3:
-                    if y_range > 0.0:
-                        ranges.append(y_range)
-                        counts.append(0.5)
+        ranges = np.asarray(ranges, dtype=float).squeeze()
 
-                    stack.pop(0)
+        if ranges.size == 0:
+            return np.zeros(0), np.zeros(0)
 
-                else:
-                    if y_range > 0.0:
-                        ranges.append(y_range)
-                        counts.append(1.0)
+        valid = ranges > 0.0
+        ranges = ranges[valid]
 
-                    last_point = stack.pop()
-                    stack.pop()
-                    stack.pop()
-                    stack.append(last_point)
+        if ranges.size == 0:
+            return np.zeros(0), np.zeros(0)
 
-        for i_point in range(len(stack) - 1):
-            stress_range = abs(stack[i_point + 1] - stack[i_point])
+        counts = np.ones_like(ranges, dtype=float)
 
-            if stress_range > 0.0:
-                ranges.append(stress_range)
-                counts.append(0.5)
-
-        return np.asarray(ranges, dtype=float), np.asarray(counts, dtype=float)
+        return ranges, counts
 
     def damage_from_stress_timeseries(self, stress, section_t, inputs):
         """
@@ -1470,6 +1424,7 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
             if case_probability == 0.0:
                 continue
 
+            # Load one active case and convert raw solver units to SI.
             time, Fz_grid, Mx_grid, My_grid = (
                 self._load_case_tower_loads_on_solver_grid(
                     ts_dir=metadata["ts_dir"],
@@ -1482,6 +1437,7 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
 
             case_duration = float(time[-1] - time[0])
 
+            # Interpolate loads from the solver tower grid to TowerSE section centers.
             Fz_case, Mx_case, My_case = self._interpolate_tower_loads_to_sections(
                 tower_grid=metadata["tower_grid"],
                 Fz_grid=Fz_grid,
@@ -1491,6 +1447,7 @@ class TowerFatiguePostFrame(om.ExplicitComponent):
                 z_full=inputs["z_full"],
             )
 
+            # Accumulate lifetime-scaled fatigue damage for this case.
             damage_theta += self.calculate_damage_for_case(
                 Fz_case=Fz_case,
                 Mx_case=Mx_case,
