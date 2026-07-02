@@ -278,9 +278,11 @@ class WindTurbineOntologyPythonWEIS(WindTurbineOntologyPython):
         # Initialize the DLC generator
         cut_in = self.wt_init['control']['supervisory']['Vin']
         cut_out = self.wt_init['control']['supervisory']['Vout']
+        ws_class = self.wt_init.get('assembly', {}).get('turbine_class', 'I')
+        wt_class = self.wt_init.get('assembly', {}).get('turbulence_class', 'B')
         metocean = self.modeling_options['DLC_driver']['metocean_conditions']
         dlc_driver_options = self.modeling_options['DLC_driver']
-        dlc_generator = DLCGenerator(cut_in, cut_out, dlc_driver_options=dlc_driver_options, metocean=metocean)
+        dlc_generator = DLCGenerator(cut_in, cut_out, wind_speed_class=ws_class, wind_turbulence_class=wt_class, dlc_driver_options=dlc_driver_options, metocean=metocean)
         # Generate cases from user inputs
         for i_DLC in range(len(DLCs)):
             DLCopt = DLCs[i_DLC]

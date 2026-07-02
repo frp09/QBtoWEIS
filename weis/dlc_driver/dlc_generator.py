@@ -302,9 +302,7 @@ class DLCGenerator(object):
                     self.openfast_input_map[key] = tuple(value)
 
     def IECwind(self):
-        self.IECturb = IEC_TurbulenceModels()
-        self.IECturb.Turbine_Class = self.wind_speed_class
-        self.IECturb.Turbulence_Class = self.wind_turbulence_class
+        self.IECturb = IEC_TurbulenceModels(self.wind_speed_class, self.wind_turbulence_class)
         self.IECturb.setup()
         _, self.V_e50, self.V_e1, _, _ = self.IECturb.EWM(0.)
         self.V_ref = self.IECturb.V_ref

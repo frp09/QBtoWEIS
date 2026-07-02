@@ -1,9 +1,9 @@
 class IEC_TurbulenceModels():
 
-    def __init__(self):
+    def __init__(self, turbine_class='I', turbulence_class='B'):
 
-        self.Turbine_Class    = 'III'      # IEC Wind Turbine Class - THIS IS HARDCOADED, NEEDS TO BE CORRECTED
-        self.Turbulence_Class = 'B'    # IEC Turbulance Class
+        self.Turbine_Class    = turbine_class
+        self.Turbulence_Class = turbulence_class
         self.z_hub            = 90.    # wind turbine hub height (m)
 
     def setup(self):

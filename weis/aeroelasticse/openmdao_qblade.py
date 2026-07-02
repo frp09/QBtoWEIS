@@ -107,7 +107,7 @@ class QBLADELoadCases(ExplicitComponent):
         self.add_input('V_cutin',     val=0.0, units='m/s',      desc='Minimum wind speed where turbine operates (cut-in)')
         self.add_input('V_cutout',    val=0.0, units='m/s',      desc='Maximum wind speed where turbine operates (cut-out)')
         self.add_input('Vrated',      val=0.0, units='m/s',      desc='rated wind speed')
-        self.add_discrete_input('turbulence_class', val='A', desc='IEC turbulence class')
+        self.add_discrete_input('turbulence_class', val='B', desc='IEC turbulence class')
         self.add_discrete_input('turbine_class',    val='I', desc='IEC turbine class')
         self.add_input('shearExp',    val=0.0,                   desc='shear exponent')
 
