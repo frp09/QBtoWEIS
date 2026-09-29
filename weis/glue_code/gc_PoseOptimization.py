@@ -93,6 +93,19 @@ class PoseOptimizationWEIS(PoseOptimization):
         finally:
             self.opt["design_variables"]["user"] = user_defined
 
+        # -- Floating joint theta coordinate --
+        float_opt = self.opt["design_variables"]["floating"]
+        if float_opt["joints"]["flag"]:
+            jointtheta = float_opt["joints"]["theta_coordinate"]
+            count = len(float_opt["joints"]["z_coordinate"]) + len(float_opt["joints"]["r_coordinate"])
+
+            for k in range(len(jointtheta)):
+                wt_opt.model.add_design_var(
+                    f"floating.jointdv_{count + k}",
+                    lower=jointtheta[k]["lower_bound"],
+                    upper=jointtheta[k]["upper_bound"],
+                )
+
         for user_dv in user_defined:
 
             name_i = user_dv["name"]

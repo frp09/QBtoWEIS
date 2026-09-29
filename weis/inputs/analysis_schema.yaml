@@ -295,6 +295,34 @@ properties:
                                                 maximum: 1.e+3
                                                 unit: none
                                             ref: *ipc_ref
+            floating:
+                type: object
+                default: {}
+                properties:
+                    joints:
+                        type: object
+                        default: {}
+                        properties:
+                            theta_coordinate:
+                                type: array
+                                description: Azimuth angle of cylindrical floating-platform joints used as design variables
+                                default: []
+                                items:
+                                    type: object
+                                    properties:
+                                        names:
+                                            type: array
+                                            description: Joint names sharing the same theta design variable
+                                            items:
+                                                type: string
+                                        lower_bound:
+                                            type: number
+                                            unit: rad
+                                            description: Lower bound on joint azimuth angle
+                                        upper_bound:
+                                            type: number
+                                            unit: rad
+                                            description: Upper bound on joint azimuth angle
             TMDs:
                 type: object
                 description: Design variables associated with TMDs
