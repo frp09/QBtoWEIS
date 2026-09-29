@@ -550,7 +550,7 @@ def _rainflow_ranges_counts(stress, rainflow_ranges_bins):
     if ranges.size == 0:
         return np.zeros(0), np.zeros(0)
 
-    counts, ranges = fatpack.find_range_count(ranges, bins=100)
+    counts, ranges = fatpack.find_range_count(ranges, bins=rainflow_ranges_bins)
     counts = np.atleast_1d(np.asarray(counts, dtype=float).squeeze())
     ranges = np.atleast_1d(np.asarray(ranges, dtype=float).squeeze())
     valid = np.isfinite(ranges) & np.isfinite(counts) & (ranges > 0.0) & (counts > 0.0)
