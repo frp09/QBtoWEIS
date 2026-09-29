@@ -27,6 +27,7 @@ from wisdem.inputs import load_yaml
 from wisdem.commonse.cylinder_member import get_nfull
 
 from weis.aeroelasticse.openmdao_qblade import QBLADELoadCases
+from weis.aeroelasticse.tower_fatigue_post import TowerFatiguePostFrame
 try:
     from weis.gebt.sonata_wrapper import SONATA_WEIS
 except ImportError:
@@ -48,6 +49,34 @@ class WindPark(om.Group):
         modeling_options = self.options['modeling_options']
         opt_options      = self.options['opt_options']
         wt_init          = self.options['wt_init']
+
+        # Validate TowerFatigue solver compatibility before any subsystem is added.
+        if modeling_options.get("TowerFatigue", {}).get("flag", False):
+            if not modeling_options.get("flags", {}).get("tower", False):
+                raise ValueError(
+                    "TowerFatigue is active (TowerFatigue.flag=True), but "
+                    "modeling_options['flags']['tower'] is False. TowerFatigue requires "
+                    "the tower model to be active because it uses TowerSE geometry and "
+                    "creates the tower_fatigue_post subsystem only in the tower branch."
+                )
+            _qblade_active = modeling_options.get("QBlade", {}).get("flag", False)
+            _openfast_active = (
+                modeling_options.get("OpenFAST", {}).get("flag", False)
+                or modeling_options.get("OpenFAST_Linear", {}).get("flag", False)
+            )
+            if not _qblade_active and not _openfast_active:
+                raise ValueError(
+                    "TowerFatigue is active (TowerFatigue.flag=True) but neither "
+                    "QBlade nor OpenFAST is active. TowerFatigue requires an "
+                    "aeroelastic solver with saved time-series output (currently "
+                    "QBlade; OpenFAST support is planned for a future release)."
+                )
+            if _openfast_active and not _qblade_active:
+                raise NotImplementedError(
+                    "TowerFatigue with OpenFAST is not yet implemented in this "
+                    "branch. Enable QBlade (QBlade.flag=True) to use TowerFatigue, "
+                    "or set TowerFatigue.flag=False."
+                )
 
         #self.linear_solver = lbgs = om.LinearBlockGS()
         #self.nonlinear_solver = nlbgs = om.NonlinearBlockGS()
@@ -102,6 +131,24 @@ class WindPark(om.Group):
 
         # Analysis components
         self.add_subsystem('wisdem',   wisdemPark(modeling_options = modeling_options, opt_options = opt_options), promotes=['*'])
+
+        if opt_options['constraints']['floating'].get('mooring_length_min', {}).get('flag', False):
+            if not modeling_options['flags']['mooring']:
+                raise ValueError('Minimum mooring length constraint requires the mooring model.')
+            mooropt = modeling_options['mooring']
+            n_lines = mooropt['n_lines']
+            self.add_subsystem('mooring_length_check', om.ExecComp(
+                'margin = length - (sum((node2 - node1)**2, axis=1)**0.5)*1.1',
+                margin={'val': np.zeros(n_lines), 'units': 'm'},
+                length={'val': np.zeros(n_lines), 'units': 'm'},
+                node1={'val': np.zeros((n_lines, 3)), 'units': 'm'},
+                node2={'val': np.zeros((n_lines, 3)), 'units': 'm'},
+            ))
+            self.connect('mooring.unstretched_length', 'mooring_length_check.length')
+            for endpoint in ('node1', 'node2'):
+                indices = [mooropt['node_names'].index(name) for name in mooropt[endpoint]]
+                self.connect('mooring.mooring_nodes', f'mooring_length_check.{endpoint}',
+                             src_indices=om.slicer[indices, :])
 
         # XFOIL
         self.add_subsystem('xf',        RunXFOIL(modeling_options = modeling_options, opt_options = opt_options)) # Recompute polars with xfoil (for flaps)
@@ -958,7 +1005,18 @@ class WindPark(om.Group):
         
         # Make relevant connections between WISDEM/WEIS and QBlade relevant components (mainly aeroelastic_qblade)
         if modeling_options['QBlade']['flag']:
-            
+
+            # Force save_timeseries when TowerFatigue is active — TowerFatiguePostFrame
+            # reads the .p files from disk, so they must be written by QBlade first.
+            if modeling_options.get("TowerFatigue", {}).get("flag", False):
+                if not modeling_options['General']['qblade_configuration'].get('save_timeseries', False):
+                    print(
+                        "WARNING: TowerFatigue is active: forcing "
+                        "General.qblade_configuration.save_timeseries = True because "
+                        "tower fatigue requires saved time-series files."
+                    )
+                    modeling_options['General']['qblade_configuration']['save_timeseries'] = True
+
             self.add_subsystem('aeroelastic_qblade',       QBLADELoadCases(modeling_options = modeling_options, opt_options = opt_options, wt_init = wt_init, cache=opt_options.get('cache', None)))
             self.add_subsystem('stall_check_of',           NoStallConstraint(modeling_options = modeling_options))
 
@@ -987,7 +1045,30 @@ class WindPark(om.Group):
                 n_refine = modeling_options['WISDEM']['TowerSE']["n_refine"]
                 n_full = get_nfull(n_height, nref=n_refine)
                 self.add_subsystem('towerse_post',   CylinderPostFrame(modeling_options=modeling_options["WISDEM"]["TowerSE"], n_dlc=1, n_full = n_full))
-            
+                if modeling_options.get("TowerFatigue", {}).get("flag", False):
+                    self.add_subsystem("tower_fatigue_post", TowerFatiguePostFrame(
+                        modeling_options=modeling_options,
+                        n_full=n_full,
+                        n_theta=modeling_options.get("TowerFatigue", {}).get("n_theta", 36),
+                        sn_model=modeling_options.get("TowerFatigue", {}).get("sn_model", "bilinear"),
+                    ))
+                    _tf = modeling_options["TowerFatigue"]
+                    _SYEAR = 365.25 * 24.0 * 3600.0
+                    fatigue_ivc = om.IndepVarComp()
+                    fatigue_ivc.add_output("section_fatigue_scf",       val=float(_tf.get("section_fatigue_scf", 1.0)))
+                    fatigue_ivc.add_output("fatigue_design_factor",     val=float(_tf.get("fatigue_design_factor", 1.0)))
+                    fatigue_ivc.add_output("sn_k_full",                 val=float(_tf.get("sn_k_full", 0.20)))
+                    fatigue_ivc.add_output("sn_tref_full",              val=float(_tf.get("sn_tref_full", 0.025)), units="m")
+                    fatigue_ivc.add_output("sn_log_a_full",             val=float(_tf.get("sn_log_a_full", 12.010)))
+                    fatigue_ivc.add_output("sn_m_full",                 val=float(_tf.get("sn_m_full", 3.0)))
+                    fatigue_ivc.add_output("sn_log_a1_full",            val=float(_tf.get("sn_log_a1_full", 12.010)))
+                    fatigue_ivc.add_output("sn_m1_full",                val=float(_tf.get("sn_m1_full", 3.0)))
+                    fatigue_ivc.add_output("sn_log_a2_full",            val=float(_tf.get("sn_log_a2_full", 15.350)))
+                    fatigue_ivc.add_output("sn_m2_full",                val=float(_tf.get("sn_m2_full", 5.0)))
+                    fatigue_ivc.add_output("sn_transition_cycles_full", val=float(_tf.get("sn_transition_cycles_full", 1.0e7)))
+                    fatigue_ivc.add_output("design_life",               val=float(_tf.get("design_life_years", 25.0)) * _SYEAR, units="s")
+                    self.add_subsystem("fatigue_ivc", fatigue_ivc)
+
             if modeling_options["flags"]["monopile"]:
                 n_height = modeling_options['WISDEM']['FixedBottomSE']["n_height"]
                 n_refine = modeling_options['WISDEM']['FixedBottomSE']["n_refine"]
@@ -1075,6 +1156,9 @@ class WindPark(om.Group):
                 self.connect('rotorse.re.x_sc',                        'aeroelastic_qblade.beam:x_sc')
                 self.connect('rotorse.re.precomp.flap_iner',           'aeroelastic_qblade.beam:flap_iner')
                 self.connect('rotorse.re.precomp.edge_iner',           'aeroelastic_qblade.beam:edge_iner')
+                self.connect('rotorse.blade_mass',                     'aeroelastic_qblade.blade_mass')
+                self.connect('rotorse.blade_span_cg',                  'aeroelastic_qblade.blade_span_cg')
+                self.connect('rotorse.blade_moment_of_inertia',        'aeroelastic_qblade.blade_moment_of_inertia')
                 # self.connect('rotorse.re.Tw_iner',                     'aeroelastic_qblade.beam:Tw_iner') # TODO: what happened to Tw_iner?
                 self.connect('rotorse.rs.frame.flap_mode_freqs',       'aeroelastic_qblade.flap_freq', src_indices=[0])
                 self.connect('rotorse.rs.frame.edge_mode_freqs',       'aeroelastic_qblade.edge_freq', src_indices=[0])
@@ -1112,6 +1196,8 @@ class WindPark(om.Group):
                 self.connect('nacelle.distance_tt_hub',             'aeroelastic_qblade.distance_tt_hub')
                 self.connect('drivese.above_yaw_I_TT',              'aeroelastic_qblade.nacelle_I_TT')
                 self.connect('towerse.tower_I_base',                'aeroelastic_qblade.tower_I_base')
+                self.connect('towerse.tower_mass',                  'aeroelastic_qblade.tower_mass')
+                self.connect('towerse.tower_center_of_mass',        'aeroelastic_qblade.tower_center_of_mass')
 
                 if modeling_options['flags']['monopile']:
                     self.connect('monopile.transition_piece_mass',  'aeroelastic_qblade.transition_piece_mass')
@@ -1255,6 +1341,27 @@ class WindPark(om.Group):
                     self.connect("aeroelastic_qblade.tower_maxMy_Mx", "towerse_post.cylinder_Mxx")
                     self.connect("aeroelastic_qblade.tower_maxMy_My", "towerse_post.cylinder_Myy")
                     self.connect("aeroelastic_qblade.tower_maxMy_Mz", "towerse_post.cylinder_Mzz")
+                    if modeling_options.get("TowerFatigue", {}).get("flag", False):
+                        self.connect('towerse.z_full',              'tower_fatigue_post.z_full')
+                        self.connect('towerse.outer_diameter_full', 'tower_fatigue_post.outer_diameter_full')
+                        self.connect('towerse.t_full',              'tower_fatigue_post.t_full')
+                        for _k in [
+                            "section_fatigue_scf", "fatigue_design_factor",
+                            "sn_k_full", "sn_tref_full",
+                            "sn_log_a_full", "sn_m_full",
+                            "sn_log_a1_full", "sn_m1_full",
+                            "sn_log_a2_full", "sn_m2_full",
+                            "sn_transition_cycles_full", "design_life",
+                        ]:
+                            self.connect(f"fatigue_ivc.{_k}", f"tower_fatigue_post.{_k}")
+                        for _m in [
+                            "tower_fatigue_ts_dir",
+                            "tower_fatigue_case_names",
+                            "tower_fatigue_case_probability",
+                            "tower_fatigue_case_files",
+                            "tower_fatigue_load_channels",
+                        ]:
+                            self.connect(f"aeroelastic_qblade.{_m}", f"tower_fatigue_post.{_m}")
 
                 if modeling_options["flags"]["monopile"]:
                     # mono_params = ["z_full","d_full","t_full",

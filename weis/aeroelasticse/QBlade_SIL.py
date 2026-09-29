@@ -35,6 +35,7 @@ def qblade_sil(QBlade_dll, QBLADE_runDirectory, sim, channels, store_qprs, out_f
 
     QBLIB = QBladeLibrary(QBlade_dll)
 
+    success = False
     for attempt in range(max_retries):
         if QBLIB.createInstance(cl_device, cl_group_size):
             success = True
@@ -54,10 +55,9 @@ def qblade_sil(QBlade_dll, QBLADE_runDirectory, sim, channels, store_qprs, out_f
     simulation_success = QBLIB.runFullSimulation()
     
     if not simulation_success:
-        log_failed_simulation(sim_name, qb_inumber, QBLADE_runDirectory)
         raise RuntimeError(f"Simulation {sim} failed.")  
     
-    sim_out_name = sim_name.strip('.sim')
+    sim_out_name = os.path.splitext(sim_name)[0]
     
     # TODO: allow for out AND oub
     if out_file_format == 2 and simulation_success: # 2 --> binary:
@@ -72,26 +72,40 @@ def qblade_sil(QBlade_dll, QBLADE_runDirectory, sim, channels, store_qprs, out_f
     
     QBLIB.unload()
 
+
 def run_qblade_sil(QBlade_dll, QBLADE_runDirectory, channels, number_of_workers, store_qprs, out_file_format, qb_inumber, cl_devices, cl_group_size):
     
-    clear_and_delete_temp(QBlade_dll) # delete TEMP folder within QBlade directory to prevent unnecessary data clogging
+    clear_and_delete_temp(QBlade_dll)  # delete TEMP folder within QBlade directory to prevent unnecessary data clogging
 
     simulations = sorted([os.path.join(QBLADE_runDirectory, f) for f in os.listdir(QBLADE_runDirectory) if f.endswith('.sim')])
+
     num_cl_devices = len(cl_devices)
 
-    # Chunk the simulations for each device
+    # Keep the current assignment of simulations to OpenCL devices
     sim_chunks = np.array_split(simulations, num_cl_devices)
-    
-    # Useful if some simulations take a lot longer than others
-    # sim_chunks = [simulations[i::num_cl_devices] for i in range(num_cl_devices)]
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=number_of_workers) as executor:
-        futures = []
+    # Build a single ordered list of (simulation, OpenCL device)
+    simulations_with_device = []
 
-        # Distribute simulations evenly across cl_devices        
-        for device_index, cl_device in enumerate(cl_devices):
-            for sim in sim_chunks[device_index]:
-                futures.append(
+    for device_index, cl_device in enumerate(cl_devices):
+        for sim in sim_chunks[device_index]:
+            simulations_with_device.append((sim, cl_device))
+
+    # Run simulations in groups of at most number_of_workers
+    for batch_start in range(0, len(simulations_with_device), number_of_workers):
+        batch_t0 = time.perf_counter()
+        
+        batch = simulations_with_device[batch_start:batch_start + number_of_workers]
+
+        print(f"Starting QBlade batch {batch_start // number_of_workers + 1} with {len(batch)} simulations.")
+
+        # A NEW ProcessPoolExecutor is created for every batch
+        with concurrent.futures.ProcessPoolExecutor(max_workers=min(number_of_workers, len(batch))) as executor:
+
+            futures = {}
+
+            for sim, cl_device in batch:
+                futures[
                     executor.submit(
                         qblade_sil,
                         QBlade_dll,
@@ -101,16 +115,36 @@ def run_qblade_sil(QBlade_dll, QBLADE_runDirectory, channels, number_of_workers,
                         store_qprs,
                         out_file_format,
                         qb_inumber,
-                        cl_device,           # Correct cl_device assigned to this chunk
+                        cl_device,
                         cl_group_size
                     )
-                )
+                ] = sim
+
                 time.sleep(0.25)  # Optional: prevent overloading
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Simulation failed with exception: {e}")
+
+            # Wait until ALL simulations in this batch are finished
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    sim_name = os.path.basename(futures[future])
+                    log_failed_simulation(sim_name, qb_inumber, QBLADE_runDirectory)
+                    output_file = os.path.join(QBLADE_runDirectory, os.path.splitext(sim_name)[0] + '_completed.outb')
+                    if os.path.exists(output_file):
+                        os.remove(output_file)
+                    print(f"Simulation failed with exception: {e}")
+
+        batch_elapsed = time.perf_counter() - batch_t0
+        
+        # Here the executor has been shut down and its worker processes are gone
+        print(f"QBlade batch {batch_start // number_of_workers + 1} completed. Worker processes closed.")
+        
+        print(f"Worker processes closed. "
+              f"Elapsed time: {batch_elapsed:.2f} s "
+              f"({batch_elapsed / 60:.2f} min).")        
+        
+
+
 
 def log_failed_simulation(sim_name, qb_inumber, run_directory):
     status_file = os.path.join(run_directory, "qblade_run_failure_log.yaml")

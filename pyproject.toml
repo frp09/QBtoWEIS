@@ -41,6 +41,7 @@ classifiers = [  # Optional
 ]
 
 dependencies = [
+  "fatpack",
   "marmot-agents>=0.2.5",
   "mat4py",
   "moorpy",

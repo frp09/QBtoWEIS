@@ -295,6 +295,34 @@ properties:
                                                 maximum: 1.e+3
                                                 unit: none
                                             ref: *ipc_ref
+            floating:
+                type: object
+                default: {}
+                properties:
+                    joints:
+                        type: object
+                        default: {}
+                        properties:
+                            theta_coordinate:
+                                type: array
+                                description: Azimuth angle of cylindrical floating-platform joints used as design variables
+                                default: []
+                                items:
+                                    type: object
+                                    properties:
+                                        names:
+                                            type: array
+                                            description: Joint names sharing the same theta design variable
+                                            items:
+                                                type: string
+                                        lower_bound:
+                                            type: number
+                                            unit: rad
+                                            description: Lower bound on joint azimuth angle
+                                        upper_bound:
+                                            type: number
+                                            unit: rad
+                                            description: Upper bound on joint azimuth angle
             TMDs:
                 type: object
                 description: Design variables associated with TMDs
@@ -366,6 +394,14 @@ properties:
                                         lower_bound: *bound
                                         upper_bound: *bound
                                         initial: *initial
+            user:
+                items:
+                    properties:
+                        flat_indices:
+                            type: boolean
+                            default: False
+                            description: Interpret indices as indices into the flattened source array.                                        
+
     constraints:
         # GB: These all need gammas or safety factors
         type: object
@@ -487,6 +523,12 @@ properties:
                 type: object
                 default: {}
                 properties:
+                    mooring_length_min:
+                        type: object
+                        default: {}
+                        description: Require each unstretched mooring line length to be at least the 3D distance between its endpoint nodes.
+                        properties:
+                            flag: *flag
                     Max_Offset:
                         type: object
                         default: {}
@@ -518,7 +560,40 @@ properties:
                                 type: boolean
                                 default: False
                                 description: Use the logarithm of damage as the constraint.
-
+                    tower_fatigue:
+                        type: object
+                        description: Tower fatigue constraint based on Miner's rule accumulated damage from QBlade time-series. Requires TowerFatigue.flag=True and QBlade.flag=True in modeling options.
+                        default: {}
+                        properties:
+                            flag: *flag
+                            max:
+                                type: number
+                                default: 1.0
+                                minimum: 0.0
+                                description: Upper bound on tower_fatigue_post.constr_fatigue (normalized Miner's rule damage). Default is 1.0.
+                    mooring_fatigue:
+                        type: object
+                        description: Mooring chain tension-tension fatigue constraint using T-N curves and Miner's rule.
+                        default: {}
+                        properties:
+                            flag: *flag
+                            max:
+                                type: number
+                                default: 1.0
+                                minimum: 0.0
+                                description: Upper bound on DFF times lifetime Miner damage.
+                            fatigue_design_factor:
+                                type: number
+                                default: 3.0
+                                minimum: 1.0
+                            tn_k:
+                                type: number
+                                default: 316.0
+                                minimum: 1.e-12
+                            tn_m:
+                                type: number
+                                default: 3.0
+                                minimum: 1.e-12
             openfast_failed:
                 type: object
                 default: {}

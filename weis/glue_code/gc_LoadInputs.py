@@ -61,6 +61,26 @@ class WindTurbineOntologyPythonWEIS(WindTurbineOntologyPython):
         self.set_weis_data()
         self.set_opt_flags()
 
+    def set_opt_flags(self):
+        super().set_opt_flags()
+
+        if not self.modeling_options["flags"]["floating"]:
+            return
+
+        joint_options = self.modeling_options["floating"]["joints"]
+        theta_dvs = self.analysis_options["design_variables"]["floating"]["joints"]["theta_coordinate"]
+
+        for idv in theta_dvs:
+            idx = [joint_options["name"].index(name) for name in idv["names"]]
+
+            for k in idx:
+                if not joint_options["cylindrical"][k]:
+                    raise ValueError(
+                        f"Cannot optimize theta-coordinate of {joint_options['name'][k]} because it is not a cylindrical joint"
+                    )
+
+            joint_options["design_variable_data"].append({"indices": idx, "dimension": 1})
+
     def set_weis_data(self):
 
         # Directory of modeling option input, if we want to use it for relative paths

@@ -18,7 +18,7 @@ setlocal ENABLEDELAYEDEXPANSION
 
 REM --- Config ---
 set "SCRIPT_DIR=%~dp0"
-set "REPO_OWNER=rbehrensdeluna"
+set "REPO_OWNER=frp09"
 set "REPO_NAME=QBtoWEIS"
 set "REPO_URL=https://github.com/%REPO_OWNER%/%REPO_NAME%.git"
 

@@ -94,6 +94,8 @@ class QBladeWrapper:
         self.magnitude_channels = magnitude_channels_default
         self.fatigue_channels   = fatigue_channels_default
         self.la                 = None
+        self.result_names       = ()  # same order as the returned time series
+        self.case_names         = ()  # expected input case names, without .sim
 
     def init_crunch(self):
         if self.la is None:
@@ -119,15 +121,18 @@ class QBladeWrapper:
         
         return summary_stats, extreme_table, DELs, Damage, ct
     
+    def _output_files(self):
+        """Select only outputs corresponding to the registered input cases."""
+        if not self.case_names:
+            raise RuntimeError("Expected QBlade case names must be supplied before reading outputs.")
+        extension = {1: ".out", 2: ".outb"}[self.out_file_format]
+        expected = {name + "_completed" + extension for name in self.case_names}
+        return sorted(expected.intersection(os.listdir(self.QBLADE_runDirectory)))
+
     def run_multi(self,): 
         self.init_crunch()
 
-        # Filter only .out files and sort them
-        all_files_in_dir = os.listdir(self.QBLADE_runDirectory)
-        if self.out_file_format == 1:   # ASCII
-            out_files = sorted([f for f in all_files_in_dir if f.endswith(".out")])
-        elif self.out_file_format == 2: # Binary
-            out_files = sorted([f for f in all_files_in_dir if f.endswith(".outb")])
+        out_files = self._output_files()
 
         if sys.platform == "linux": # ProcessPoolExecutor is a bit quicker but doesn't work under windows
             with ProcessPoolExecutor(max_workers=self.number_of_workers) as executor:
@@ -149,15 +154,15 @@ class QBladeWrapper:
             dam[_name] = _dam
             ct.append(_ct)
             
-        # Delete the .out files after processing
+        processed = self._post_process_named_results(ss, et, dl, dam, ct)
+
+        # Delete the .out files after successful post-processing.
         if self.delete_out_files:
             for f in out_files:
                 os.remove(os.path.join(self.QBLADE_runDirectory, f))
                 print(f"Successfully deleted {f}.")
 
-        summary_stats, extreme_table, DELs, Damage = self.la.post_process(ss, et, dl, dam)
-
-        return summary_stats, extreme_table, DELs, Damage, ct
+        return processed
 
     def parallel_analyze_cases(self,file_name):
             QBLADE_Output_txt = os.path.join(self.QBLADE_runDirectory, file_name)
@@ -166,12 +171,7 @@ class QBladeWrapper:
     def run_serial(self):
         self.init_crunch()
 
-        # Filter only .out files and sort them
-        all_files_in_dir = os.listdir(self.QBLADE_runDirectory)
-        if self.out_file_format == 1:   # ASCII
-            out_files = sorted([f for f in all_files_in_dir if f.endswith(".out")])
-        elif self.out_file_format == 2: # Binary
-            out_files = sorted([f for f in all_files_in_dir if f.endswith(".outb")])
+        out_files = self._output_files()
         
         ss = {}
         et = {}
@@ -189,14 +189,31 @@ class QBladeWrapper:
             dam[_name] = _dam
             ct.append(_ct)
         
-        # Delete the .out files after processing
+        processed = self._post_process_named_results(ss, et, dl, dam, ct)
+
+        # Delete the .out files after successful post-processing.
         if self.delete_out_files:
             for f in out_files:
                 os.remove(os.path.join(self.QBLADE_runDirectory, f))
                 print(f"Successfully deleted {f}.")
-        
-        summary_stats, extreme_table, DELs, Damage = self.la.post_process(ss, et, dl, dam)
-        
+
+        return processed
+
+    def _post_process_named_results(self, ss, et, dl, dam, ct):
+        """Keep the QBlade filename associated with each returned time series."""
+        self.result_names = tuple(ss)
+        if not self.result_names or len(self.result_names) != len(ct):
+            raise RuntimeError("QBlade result names and time-series count are inconsistent.")
+
+        summary_stats, _, DELs, Damage = self.la.post_process(ss, et, dl, dam)
+        for table_name, table in (("summary statistics", summary_stats), ("DELs", DELs), ("damage", Damage)):
+            if not table.index.is_unique or set(table.index) != set(self.result_names):
+                raise RuntimeError(f"pCrunch {table_name} did not retain unique QBlade result filenames; positional result mapping is not safe.")
+
+        # Keep concomitant extreme events aligned with the row order actually
+        # returned by pCrunch.  Do not combine component-wise maxima.
+        extreme_table = {channel: [et[name][channel] for name in summary_stats.index] for channel in et[self.result_names[0]]}
+
         return summary_stats, extreme_table, DELs, Damage, ct
         
     def set_environment(self):
@@ -238,6 +255,9 @@ class QBladeWrapper:
             ]
         
         cmd = ['python', script_path] + sim_params
+        # Remove only expected outputs so a failed run cannot reuse older data.
+        for filename in self._output_files():
+            os.remove(os.path.join(self.QBLADE_runDirectory, filename))
         subprocess.run(cmd, check=True)
 
 
@@ -284,6 +304,7 @@ class QBladeWrapper:
         # Trim Data
         if self.qb_vt['QSim']['STOREFROM'] > 0.0 and not self.qb_vt['QSim']['DLCGenerator']: # in DLCGenerator QBlade never stores the values during the "tansient_time"
             output.trim_data(tmin=self.qb_vt['QSim']['STOREFROM'], tmax=self.qb_vt['QSim']['TMax'])
+            output_dict = {channel: values.to_numpy() for channel, values in output.df.items()}
         case_name, sum_stats, extremes, dels, damage = self.la._process_output(output,
                                                                             return_damage=True,
                                                                             goodman_correction=self.goodman)
@@ -336,6 +357,7 @@ if __name__ == "__main__":
     qblade.QBlade_dll = dll_path
     qblade.QBlade_libs = libs_path
     qblade.QBLADE_runDirectory = run_directory
+    qblade.case_names = tuple(os.path.splitext(f)[0] for f in os.listdir(run_directory) if f.endswith('.sim'))
     qblade.QBLADE_namingOut    = naming_out
     qb_vt = {
         'QSim': {

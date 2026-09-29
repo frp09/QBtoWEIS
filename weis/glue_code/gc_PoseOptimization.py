@@ -83,7 +83,51 @@ class PoseOptimizationWEIS(PoseOptimization):
 
     
     def set_design_variables(self, wt_opt, wt_init):
-        super(PoseOptimizationWEIS, self).set_design_variables(wt_opt, wt_init)
+        # WISDEM 3.19.0 does not pass flat_indices to user-defined design
+        # variables. Temporarily remove them from the parent call and add
+        # them below with the WEIS extension.
+        user_defined = self.opt["design_variables"].pop("user", [])
+
+        try:
+            super(PoseOptimizationWEIS, self).set_design_variables(wt_opt, wt_init)
+        finally:
+            self.opt["design_variables"]["user"] = user_defined
+
+        # -- Floating joint theta coordinate --
+        float_opt = self.opt["design_variables"]["floating"]
+        if float_opt["joints"]["flag"]:
+            jointtheta = float_opt["joints"]["theta_coordinate"]
+            count = len(float_opt["joints"]["z_coordinate"]) + len(float_opt["joints"]["r_coordinate"])
+
+            for k in range(len(jointtheta)):
+                wt_opt.model.add_design_var(
+                    f"floating.jointdv_{count + k}",
+                    lower=jointtheta[k]["lower_bound"],
+                    upper=jointtheta[k]["upper_bound"],
+                )
+
+        for user_dv in user_defined:
+
+            name_i = user_dv["name"]
+
+            if "lower_bound" in user_dv:
+                lower_i = user_dv["lower_bound"]
+            elif "lower" in user_dv:
+                lower_i = user_dv["lower"]
+            else:
+                lower_i = None
+
+            if "upper_bound" in user_dv:
+                upper_i = user_dv["upper_bound"]
+            elif "upper" in user_dv:
+                upper_i = user_dv["upper"]
+            else:
+                upper_i = None
+
+            ref_i = user_dv.get("ref", None)
+            indices_i = user_dv.get("indices", None)
+            flat_indices_i = user_dv.get("flat_indices", False)
+            wt_opt.model.add_design_var(name_i, lower=lower_i, upper=upper_i, ref=ref_i, indices=indices_i, flat_indices=flat_indices_i)
 
         # -- Control --
         control_opt = self.opt['design_variables']['control']
@@ -199,6 +243,9 @@ class PoseOptimizationWEIS(PoseOptimization):
     
     def set_constraints(self, wt_opt):
         super(PoseOptimizationWEIS, self).set_constraints(wt_opt)
+
+        if self.opt['constraints']['floating'].get('mooring_length_min', {}).get('flag', False):
+            wt_opt.model.add_constraint('mooring_length_check.margin', lower=0.0)
 
         blade_opt = self.opt["design_variables"]["blade"]
         blade_constr = self.opt["constraints"]["blade"]
@@ -386,6 +433,58 @@ class PoseOptimizationWEIS(PoseOptimization):
                 tower_base_damage_max = np.log(tower_base_damage_max)
 
             wt_opt.model.add_constraint(f'{self.floating_solve_component}.damage_tower_base',upper = tower_base_damage_max)
+
+        # Tower fatigue constraint — controlled by analysis options, not modeling options.
+        # TowerFatigue.flag in modeling_options enables the component; the constraint
+        # is only added when constraints.damage.tower_fatigue.flag is also true.
+        tower_fatigue_constraint = damage_constraints.get("tower_fatigue", {})
+        if tower_fatigue_constraint.get("flag", False):
+            if not self.modeling.get("TowerFatigue", {}).get("flag", False):
+                raise ValueError(
+                    "constraints.damage.tower_fatigue.flag=True, but "
+                    "modeling_options['TowerFatigue']['flag'] is False. Enable "
+                    "TowerFatigue in modeling_options to compute tower_fatigue_post "
+                    "before constraining it."
+                )
+            if not self.modeling.get("QBlade", {}).get("flag", False):
+                raise NotImplementedError(
+                    "constraints.damage.tower_fatigue.flag=True, but TowerFatigue "
+                    "is currently implemented only for QBlade in this branch. "
+                    "Enable QBlade or disable the tower fatigue constraint."
+                )
+            if not self.modeling.get("flags", {}).get("tower", False):
+                raise ValueError(
+                    "constraints.damage.tower_fatigue.flag=True, but "
+                    "modeling_options['flags']['tower'] is False. TowerFatigue "
+                    "requires the tower model to be active."
+                )
+            tower_fatigue_max = tower_fatigue_constraint.get("max", 1.0)
+            wt_opt.model.add_constraint(
+                "tower_fatigue_post.constr_fatigue",
+                upper=tower_fatigue_max,
+            )
+
+
+        mooring_fatigue_constraint = damage_constraints.get("mooring_fatigue", {})
+        if mooring_fatigue_constraint.get("flag", False):
+            if not self.modeling.get("QBlade", {}).get("flag", False):
+                raise ValueError("Mooring fatigue constraint currently requires QBlade.")
+
+            if not self.modeling.get("flags", {}).get("mooring", False):
+                raise ValueError("Mooring fatigue constraint requires the mooring model.")
+
+            n_lines = self.modeling["mooring"]["n_lines"]
+            n_stations = len(self.modeling["QBlade"]["QBladeOcean"]["MOO_Sensors_RelPos"])
+            for i_line in range(n_lines):
+                # Each row contains all sensor constraints for one mooring line.
+                wt_opt.model.add_constraint(
+                    f"{self.floating_solve_component}.mooring_fatigue_constr",
+                    indices=np.arange(i_line * n_stations, (i_line + 1) * n_stations),
+                    flat_indices=True,
+                    alias=f"mooring{i_line + 1}_fatigue_constr",
+                    upper=mooring_fatigue_constraint.get("max", 1.0),
+                )
+                    
 
         return wt_opt
 

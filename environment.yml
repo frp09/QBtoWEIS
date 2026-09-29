@@ -23,6 +23,7 @@ dependencies:
   - pydoe
   - wisdem==3.19.0
   - pip:
+    - fatpack
     - jenn
     - dash-bootstrap-components
     - dash-mantine-components
