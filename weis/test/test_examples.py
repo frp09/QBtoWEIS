@@ -1,6 +1,6 @@
 import os
 import unittest
-from weis.test.utils import execute_script
+from weis.test.utils import example_test
 
 skinny_scripts = [
     "02_run_openfast_cases/weis_driver_rosco_opt",       #It's fast, I promise (49 sec. locally)
@@ -42,25 +42,17 @@ all_scripts = [
 ]
 
 class TestExamples(unittest.TestCase):
+    """Each example is a separate test; failures do not hide later examples."""
 
-    def test_skinny(self):
-        for ks,s in enumerate(skinny_scripts):
-            with self.subTest(f"Running: {s}", i=ks):
-                try:
-                    execute_script(s)
-                    self.assertTrue(True)
-                except:
-                    self.assertEqual(s, "Success")
 
-    @unittest.skipUnless("RUN_EXHAUSTIVE" in os.environ, "exhaustive on pull request only")
-    def test_all_scripts(self):
-        for ks,s in enumerate(all_scripts):
-            with self.subTest(f"Running: {s}", i=ks):
-                try:
-                    execute_script(s)
-                    self.assertTrue(True)
-                except:
-                    self.assertEqual(s, "Success")
+for group, scripts in [("skinny", skinny_scripts), ("exhaustive", all_scripts)]:
+    for index, script in enumerate(scripts):
+        case_test = example_test(script)
+        if group == "exhaustive":
+            case_test = unittest.skipUnless("RUN_EXHAUSTIVE" in os.environ,
+                                       "exhaustive on pull request only")(case_test)
+        name = f"test_{group}_{index:02d}_{script.replace('/', '_')}"
+        setattr(TestExamples, name, case_test)
 
 def suite():
     suite = unittest.TestSuite()

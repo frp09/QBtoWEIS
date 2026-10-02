@@ -124,3 +124,8 @@ wind/
 BEM/
 none/
 steady_state/
+
+# QBlade example run artifacts
+/qb_examples/*/output/
+/qb_examples/*/opt_output/
+/qb_examples/*/tower_fatigue_output_*/

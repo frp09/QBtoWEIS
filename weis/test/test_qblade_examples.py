@@ -38,10 +38,12 @@ import os
 import sys
 import unittest
 import json
+from pathlib import Path
+import yaml
 
 import numpy as np
 
-from weis.test.utils import execute_script, compare_regression_values
+from weis.test.utils import execute_script, compare_regression_values, example_test
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -92,6 +94,11 @@ def _execute_regression_script(script):
 
 def _qblade_dll_available():
     dll_path = os.environ.get("QBLADE_DLL_PATH")
+    if dll_path is None:
+        # Direct example runs can configure the library in their modeling YAML.
+        modeling_file = Path(this_dir).parents[1] / "qb_examples/00_run_test/modeling_options.yaml"
+        with modeling_file.open() as stream:
+            dll_path = yaml.safe_load(stream)["General"]["qblade_configuration"].get("path2qb_dll")
     return bool(dll_path) and os.path.isfile(dll_path)
 
 
@@ -105,15 +112,6 @@ _SKIP_REASON = (
 @unittest.skipUnless(_qblade_dll_available(), _SKIP_REASON)
 class TestQBladeExamples(unittest.TestCase):
 
-    def test_light_scripts(self):
-        for ks, s in enumerate(qblade_light_scripts):
-            with self.subTest(f"Running: {s}", i=ks):
-                try:
-                    execute_script(s, examples_root="qb_examples")
-                    self.assertTrue(True)
-                except Exception:
-                    self.assertEqual(s, "Success")
-
     def test_regression_values(self):
         for script, output_names in qblade_regression_scripts.items():
             with self.subTest(f"Regression check: {script}"):
@@ -125,6 +123,11 @@ class TestQBladeExamples(unittest.TestCase):
                     directory=this_dir,
                     tol=1e-4,
                 )
+
+
+for index, script in enumerate(qblade_light_scripts):
+    name = f"test_light_{index:02d}_{script.replace('/', '_')}"
+    setattr(TestQBladeExamples, name, example_test(script, examples_root="qb_examples"))
 
 
 if __name__ == "__main__":

@@ -37,6 +37,9 @@ except ImportError:
 
 weis_dir = os.path.realpath(os.path.join(os.path.dirname(__file__),'../../'))
 
+MONO_POST_PARAMS = ["z_full", "outer_diameter_full", "t_full", "E_full", "G_full", "rho_full", "sigma_y_full",
+                    *(f"section_{k}" for k in ("A", "Asx", "Asy", "Ixx", "Iyy", "J0", "rho", "E", "G"))]
+
 class WindPark(om.Group):
     # Openmdao group to run the analysis of the wind turbine
 
@@ -933,8 +936,7 @@ class WindPark(om.Group):
                     self.connect("aeroelastic.tower_maxMy_Mz", "towerse_post.cylinder_Mzz")
 
                 if modeling_options["flags"]["monopile"]:
-                    mono_params = ["z_full","outer_diameter_full","t_full",
-                                  "E_full","G_full","rho_full","sigma_y_full"]
+                    mono_params = MONO_POST_PARAMS
                     for k in mono_params:
                         self.connect(f'fixedse.{k}', f'fixedse_post.{k}')
                     self.connect("fixedse.env.qdyn", "fixedse_post.qdyn")
@@ -1389,10 +1391,7 @@ class WindPark(om.Group):
                             self.connect(f"aeroelastic_qblade.{_m}", f"tower_fatigue_post.{_m}")
 
                 if modeling_options["flags"]["monopile"]:
-                    # mono_params = ["z_full","d_full","t_full",
-                    #               "E_full","G_full","rho_full","sigma_y_full"]
-                    mono_params = ["z_full","outer_diameter_full","t_full",
-                                  "E_full","G_full","rho_full","sigma_y_full"]
+                    mono_params = MONO_POST_PARAMS
                     for k in mono_params:
                         self.connect(f'fixedse.{k}',    f'fixedse_post.{k}')
                     self.connect("fixedse.env.qdyn",    "fixedse_post.qdyn")

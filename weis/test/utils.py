@@ -38,6 +38,14 @@ def execute_script(fscript, examples_root="examples"):
     return mod
 
 
+def example_test(script, examples_root="examples"):
+    """Create one unittest method so every example gets an independent result."""
+    def test(self):
+        execute_script(script, examples_root=examples_root)
+    test.__doc__ = f"Execute {examples_root}/{script}.py."
+    return test
+
+
 
 def compare_regression_values(
     values_to_test,

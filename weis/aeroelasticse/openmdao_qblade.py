@@ -1261,18 +1261,21 @@ class QBLADELoadCases(ExplicitComponent):
                 qb_vt['QBladeOcean']['SubConstr_DoF_rZ'] = np.ones_like(subconstraint)
                 qb_vt['QBladeOcean']['TP_INTERFACE_POS'] = joints_xyz[tp_index, :] # this is not an input in windIO for monopiles. we'll use the maximum z elevation instead
 
-                # Find the members where the 9 channels of SubDyn should be placed for pos-processing purposes
-                grid_joints_monopile = (joints_xyz[:,2] - joints_xyz[0,2]) / (joints_xyz[-1,2] - joints_xyz[0,2])
-                n_channels = 9
-                grid_target = np.linspace(0., 0.999999999, n_channels)
-                idx_out = [np.where(grid_i >= grid_joints_monopile)[0][-1] for grid_i in grid_target]
-                idx_out = np.unique(idx_out)
-                qb_vt['QBladeOcean']['NSub_Sensors'] = len(idx_out)
-                qb_vt['QBladeOcean']['SUB_Sensors'] = [idx+1 for idx in idx_out] # index of the member
-                qb_vt['QBladeOcean']['SUB_Sensors_RelPos'] =  [0] * (len(idx_out) - 1) + [1.0]  # relative position along the member, should be 0 except for the last one
-                self.Z_out_QBO_mpl = [grid_joints_monopile[i] for i in idx_out]
-                del idx_out
-                
+                # Place sensors along exposed members, including the top endpoint.
+                grid = (joints_xyz[:, 2] - joints_xyz[0, 2]) / (joints_xyz[-1, 2] - joints_xyz[0, 2])
+                targets = np.linspace(0., 0.999999999, 9)
+                indices = np.unique(np.searchsorted(grid, targets, side='right') - 1)
+                # A single member needs both a mudline and a top sensor.
+                if len(indices) == 1:
+                    indices = np.repeat(indices, 2)
+                relative_positions = np.zeros(len(indices))
+                relative_positions[-1] = 1.
+                qb_vt['QBladeOcean']['NSub_Sensors'] = len(indices)
+                qb_vt['QBladeOcean']['SUB_Sensors'] = (indices + 1).tolist()
+                qb_vt['QBladeOcean']['SUB_Sensors_RelPos'] = relative_positions.tolist()
+                self.Z_out_QBO_mpl = (grid[indices] + relative_positions *
+                                     (grid[indices + 1] - grid[indices])).tolist()
+
             elif modopt['flags']['floating']: 
                 qb_vt['QBladeOcean']['ISFLOATING']  =  True
                 qb_vt['QBladeOcean']['SUB_MASS']    =  float(inputs["platform_mass"])
@@ -3421,7 +3424,7 @@ class QBLADELoadCases(ExplicitComponent):
 
         z_full = inputs['tower_z_full']
         z_sec, _ = util.nodal2sectional(z_full)
-        z = (z_sec - z_sec[0]) / (z_sec[-1] - z_sec[0])
+        z = (z_sec - z_full[0]) / (z_full[-1] - z_full[0])
 
         outputs['tower_maxMy_Fx'] = spline_Fx(z)
         outputs['tower_maxMy_Fy'] = spline_Fy(z)
@@ -3483,15 +3486,18 @@ class QBLADELoadCases(ExplicitComponent):
 
         z_full = inputs['monopile_z_full']
         z_sec, _ = util.nodal2sectional(z_full)
-        z = (z_sec - z_sec[0]) / (z_sec[-1] - z_sec[0])
+        mudline = -float(inputs['water_depth'])
+        # Sensors span only the exposed pile; embedded nodes have no QBlade
+        # load solution. Extend the mudline loads below the rigid support.
+        z = np.clip((z_sec - mudline) / (z_full[-1] - mudline), 0.0, 1.0)
 
-        # QBladeOcean reports in N, but ElastoDyn and units here report in kN, so scale by 0.001
-        outputs['monopile_maxMy_Fx'] = 1e-3*spline_Fx(z)
-        outputs['monopile_maxMy_Fy'] = 1e-3*spline_Fy(z)
-        outputs['monopile_maxMy_Fz'] = 1e-3*spline_Fz(z)
-        outputs['monopile_maxMy_Mx'] = 1e-3*spline_Mx(z)
-        outputs['monopile_maxMy_My'] = 1e-3*spline_My(z)
-        outputs['monopile_maxMy_Mz'] = 1e-3*spline_Mz(z)
+        # The output reader already converts forces/moments to kN/kN*m.
+        outputs['monopile_maxMy_Fx'] = spline_Fx(z)
+        outputs['monopile_maxMy_Fy'] = spline_Fy(z)
+        outputs['monopile_maxMy_Fz'] = spline_Fz(z)
+        outputs['monopile_maxMy_Mx'] = spline_Mx(z)
+        outputs['monopile_maxMy_My'] = spline_My(z)
+        outputs['monopile_maxMy_Mz'] = spline_Mz(z)
 
         return outputs
     

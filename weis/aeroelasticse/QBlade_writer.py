@@ -1027,7 +1027,10 @@ class InputWriter_QBlade(object):
             if any(position < 0.0 or position > 1.0 for position in mooring_sensor_positions):
                 raise ValueError("QBlade mooring sensor positions must be between 0 and 1.")
 
-            for member_id in self.qb_vt['QBladeOcean']['MooID'][:self.qb_vt['QBladeOcean']['NMooMembers']]:
+            # A mooring table is required only when mooring members exist.
+            n_mooring = self.qb_vt['QBladeOcean']['NMooMembers']
+            mooring_ids = self.qb_vt['QBladeOcean']['MooID'][:n_mooring] if n_mooring else []
+            for member_id in mooring_ids:
                 for position in mooring_sensor_positions:
                     f.write(f'MOO_{int(member_id)}_{position:.3f}\n')
 

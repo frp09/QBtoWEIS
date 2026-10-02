@@ -21,6 +21,7 @@ dependencies:
   - rosco==2.9.7
   - smt==2.13.0
   - pydoe
+  - pyarrow
   - wisdem==3.19.0
   - pip:
     - fatpack
