@@ -12,7 +12,7 @@ from wisdem.commonse.cylinder_member import CylinderPostFrame
 #from wisdem.landbosse.landbosse_omdao.landbosse import LandBOSSE
 from wisdem.plant_financese.plant_finance import PlantFinance
 from wisdem.commonse.turbine_constraints  import TurbineConstraints
-from weis.aeroelasticse.openmdao_openfast import FASTLoadCases
+from weis.aeroelasticse.openmdao_openfast import FASTLoadCases, RectangularToCircularEquivalent
 from weis.control.dac import RunXFOIL
 from wisdem.rotorse.rotor_power import NoStallConstraint
 from weis.control.tune_rosco import ServoSE_ROSCO, ROSCO_Turbine
@@ -409,6 +409,23 @@ class WindPark(om.Group):
             self.connect('TMDs.damping',            'aeroelastic.TMD_damping')
 
         if modeling_options['OpenFAST']['flag'] or modeling_options['OpenFAST_Linear']['flag']:
+            if modeling_options['flags']['floating']:
+                # Added ahead of 'aeroelastic' so these components execute (and populate
+                # their outputs) before aeroelastic consumes them; OpenMDAO's default
+                # NonlinearRunOnce solver runs subsystems in add_subsystem() order, not
+                # connection order.
+                for k, kname in enumerate(modeling_options["floating"]["members"]["name"]):
+                    if modeling_options["floating"]["members"]["outer_shape"][k] == "rectangular":
+                        print(
+                            f"WARNING: OpenFAST has no rectangular member type. Floating member "
+                            f"'{kname}' is rectangular and will be modeled in OpenFAST (HydroDyn/SubDyn) "
+                            f"as an area-equivalent circular member (D = sqrt(4*side_length_a*side_length_b/pi)). "
+                            f"RAFT and QBlade continue to use the true rectangular geometry."
+                        )
+                        idx = modeling_options["floating"]["members"]["name2idx"][kname]
+                        n_height_mem = modeling_options["floating"]["members"]["n_height"][idx]
+                        self.add_subsystem(f"member{k}_equiv_diam", RectangularToCircularEquivalent(n_height=n_height_mem, member_name=kname))
+
             self.add_subsystem('aeroelastic',       FASTLoadCases(modeling_options = modeling_options, opt_options = opt_options))
             self.add_subsystem('stall_check_of',    NoStallConstraint(modeling_options = modeling_options))
             
@@ -581,8 +598,16 @@ class WindPark(om.Group):
                         idx = modeling_options["floating"]["members"]["name2idx"][kname]
                         #self.connect(f"floating.memgrp{idx}.outer_diameter", f"floatingse.member{k}.outer_diameter_in")
                         self.connect(f"floating.memgrp{idx}.s", f"aeroelastic.member{k}:s")
-                        self.connect(f"floatingse.member{k}.outer_diameter", f"aeroelastic.member{k}:outer_diameter")
                         self.connect(f"floatingse.member{k}.wall_thickness", f"aeroelastic.member{k}:wall_thickness")
+                        if modeling_options["floating"]["members"]["outer_shape"][k] == "rectangular":
+                            # OpenFAST has no rectangular member type, so approximate with an
+                            # area-equivalent circular diameter for this connection only
+                            # (member{k}_equiv_diam subsystem added earlier, ahead of 'aeroelastic')
+                            self.connect(f"floatingse.member{k}.side_length_a", f"member{k}_equiv_diam.side_length_a")
+                            self.connect(f"floatingse.member{k}.side_length_b", f"member{k}_equiv_diam.side_length_b")
+                            self.connect(f"member{k}_equiv_diam.outer_diameter", f"aeroelastic.member{k}:outer_diameter")
+                        else:
+                            self.connect(f"floatingse.member{k}.outer_diameter", f"aeroelastic.member{k}:outer_diameter")
 
                         for var in ["joint1", "joint2", "s_ghost1", "s_ghost2"]:
                             self.connect(f"floating.member_{kname}:{var}", f"aeroelastic.member{k}:{var}")

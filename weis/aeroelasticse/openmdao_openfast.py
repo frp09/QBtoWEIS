@@ -51,7 +51,35 @@ def make_coarse_grid(s_grid, diam):
     s_coarse.append(s_grid[-1])
     return np.array(s_coarse)
 
-    
+
+class RectangularToCircularEquivalent(ExplicitComponent):
+    # OpenFAST's HydroDyn/SubDyn members only support a circular cross-section, so
+    # rectangular floating members (e.g. box-section pontoons) are approximated here
+    # with an area-equivalent circular diameter for the OpenFAST-facing model only;
+    # RAFT and QBlade keep using the true rectangular geometry.
+    def initialize(self):
+        self.options.declare('n_height')
+        self.options.declare('member_name', default=None)
+
+    def setup(self):
+        n_height = self.options['n_height']
+        self.add_input('side_length_a', val=np.zeros(n_height), units='m')
+        self.add_input('side_length_b', val=np.zeros(n_height), units='m')
+        self.add_output('outer_diameter', val=np.zeros(n_height), units='m')
+        self.declare_partials('outer_diameter', ['side_length_a', 'side_length_b'], method='fd')
+        self._logged_value = False
+
+    def compute(self, inputs, outputs):
+        outputs['outer_diameter'] = np.sqrt(4.0 * inputs['side_length_a'] * inputs['side_length_b'] / np.pi)
+        if not self._logged_value:
+            print(
+                f"WARNING: member '{self.options['member_name']}' rectangular-to-circular "
+                f"substitution for OpenFAST computed outer_diameter = {outputs['outer_diameter']} m "
+                f"from side_length_a = {inputs['side_length_a']} m, side_length_b = {inputs['side_length_b']} m."
+            )
+            self._logged_value = True
+
+
 class FASTLoadCases(ExplicitComponent):
     def initialize(self):
         self.options.declare('modeling_options')
